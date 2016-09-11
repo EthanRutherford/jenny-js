@@ -40,16 +40,14 @@
 		//otherwise, we must preload it, and all of it's dependencies
 		if (loaded[src])
 			return loaded[src];
-		//set loaded to empty object
-		loaded[src] = {};
-		//return a promise which resolves when the module is loaded
-		return new Promise((resolve, reject) => {
+		//set loaded to a promise which resolves when the module is loaded
+		loaded[src] = new Promise((resolve, reject) => {
 			//load the module
 			load(src).then((result) => {
 				//get the requirements
 				let reqs = getRequirements(result);
 				//call require on all requirements, and
-				//when done, resolve with no value needed
+				//when done, resolve with the value of the module export
 				Promise.all(reqs.map(require)).then(() => {
 					loaded[src] = execute(result);
 					resolve(loaded[src]);
@@ -60,6 +58,7 @@
 				reject(error);
 			});
 		});
+		return loaded[src];
 	}
 	Object.freeze(require);
 })();

@@ -65,7 +65,7 @@ function contentArrayDelHandler(target, property) {
 
 function modelHasHandler(target, property) {
 	let me = self(this._);
-	return property in target || property in me._.elem;
+	return property in target || (property in me._.elem && !(me._.elem[property] instanceof Function));
 }
 function modelGetHandler(target, property) {
 	//if the value is not a special property, return it from the dom
@@ -83,7 +83,8 @@ function modelGetHandler(target, property) {
 		case "text":
 			property = "textContent";
 		default:
-			return me._.elem[property];
+			let ans = me._.elem[property];
+			return ans instanceof Function ? undefined : ans;
 	}
 }
 function modelSetHandler(target, property, value) {
