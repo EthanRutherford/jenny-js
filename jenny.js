@@ -5,6 +5,7 @@
 const self = require("self.js").getSelf();
 
 const arrayWrap = (obj) => obj instanceof Array ? obj : [obj];
+const nameOnlyRegEx = /^[a-z0-9[\].]+$/i;
 
 function modelOnSetHandler(target, property, value) {
 	let me = self(this);
@@ -315,11 +316,24 @@ class ClassSetProxy {
 }
 
 class JenClass {
-	constructor(model) {
+	constructor(model, props) {
 		self.init(this);
 		let me = self(this);
 		me._.model = proxifyModel(model);
 		me._.elem = self(me._.model)._.elem;
+		for (let prop in props) {
+			if (!props[prop].match(nameOnlyRegEx)) {
+				console.error(
+					"Illegal characters detected in alias '" + prop + "'!",
+					"\nCreation of alias aborted."
+				);
+				continue;
+			}
+			Object.defineProperty(this, prop, {
+				get: new Function("return this." + props[prop] + ";"),
+				set: new Function("value", "return this." + props[prop] + " = value;"),
+			});
+		}
 	}
 	get model() {
 		let me = self(this);
