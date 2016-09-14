@@ -6,10 +6,6 @@ jenny.js
 		*	perhaps implement the ownKeys trap
 	-	Consider object literals instead of switch statements
 require.js
-	+	Spec out and implement require for css
-		*	do we need a separate function?
-		*	should it be assumed from extension?
-		*	perhaps be based on optional type parameter?
 	+	Support require for json files
 	+	Implement name resolution to allow relative file paths
 		*	name resolution should be possible

@@ -40,6 +40,9 @@
 		//otherwise, we must preload it, and all of it's dependencies
 		if (loaded[src])
 			return loaded[src];
+		//check to see if we are loading css
+		if (src.includes(".css"))
+			return requireCss(src);
 		//set loaded to a promise which resolves when the module is loaded
 		loaded[src] = new Promise((resolve, reject) => {
 			//load the module
@@ -59,6 +62,26 @@
 			});
 		});
 		return loaded[src];
+	}
+	//require a css file
+	requireCss = function(src) {
+		//if a link with that name exists, return true
+		if (document.querySelectorAll("a[href='" + src + "']").length)
+			return true;
+		//otherwise, return a promise that resolves when the css is loaded
+		return new Promise((resolve, reject) => {
+			var link = document.createElement("link");
+			link.rel = "stylesheet";
+			link.type = "text/css";
+			link.href = src;
+			document.head.appendChild(link);
+			link.onload = () => {
+				resolve(true);
+			}
+			link.onerror = (event) => {
+				reject(event);
+			}
+		});
 	}
 	Object.freeze(require);
 })();
