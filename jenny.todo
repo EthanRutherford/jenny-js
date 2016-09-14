@@ -1,9 +1,10 @@
 jenny.js
+	+	Consider changing the on object to support multiple handlers
+		*	perhaps set up delegation instead
 	-	Make Jenny model proxies transparently pass non-special node props, rather than storing copies
 		*	define the symbol iterator to walk through the special props, and then attributes of the node?
 		*	perhaps implement the ownKeys trap
 	-	Consider object literals instead of switch statements
-	+	Consider changing the on object to support multiple handlers
 require.js
 	+	Spec out and implement require for css
 		*	do we need a separate function?

@@ -132,11 +132,11 @@ function modelDelHandler(target, property) {
 		case "on":
 			//remove all event handlers
 			removeHandlers(target[property], me._.elem);
-			break;
+			return true;
 		case "class":
 			//remove all classes
 			me._.elem.removeAttribute("class");
-			break;
+			return true;
 		case "text":
 			return false;
 		default:
@@ -201,9 +201,9 @@ function generateHandlers(handlers, parent) {
 }
 
 function generateClasses(classes, parent) {
-	//array containing classes
-	for (let item of classes)
+	for (let item of classes.tmp_iter)
 		parent.classList.add(item);
+	delete classes.tmp_iter;
 }
 
 function generateContent(content, parent) {
@@ -237,10 +237,10 @@ function proxifyContent(content, proxy) {
 
 function proxifyClasses(classes, proxy) {
 	if (typeof classes === "string")
-		classes = classes.trim().split(/\s+/);
+		classes = classes.trim().split(/\s+/).filter((s) => s !== "");
 	if (!(classes instanceof Array))
 		classes = [];
-	return new ClassSetProxy(classes, self(proxy)._.elem);
+	return new ClassSetProxy(classes, proxy);
 }
 
 function proxifyModel(model) {
@@ -265,16 +265,10 @@ function proxifyModel(model) {
 	modelHack._ = proxifiedModel;
 	//init self for the proxy
 	self.init(proxifiedModel);
-	/*
-	 *	Below, we proxify the properties, and set them on the model, so as not to trigger
-	 *	the traps on the proxified model
-	 */
 	//proxify "on" property
-	if (model.on)
-		model.on = proxifyHandlers(model.on, proxifiedModel);
+	model.on = proxifyHandlers(model.on || {}, proxifiedModel);
 	//proxify classes
-	if (model.class)
-		model.class = proxifyClasses(model.class, proxifiedModel);
+	model.class = proxifyClasses(model.class || "", proxifiedModel);
 	//proxify content models
 	if (model.content)
 		model.content = proxifyContent(model.content, proxifiedModel);
@@ -284,29 +278,39 @@ function proxifyModel(model) {
 	return proxifiedModel;
 }
 
-class ClassSetProxy extends Set {
-	constructor(iterable, elem) {
-		super();
-		for (let item of iterable)
-			super.add(item);
-		self.init(this);
+class ClassSetProxy {
+	constructor(iterable, proxy) {
+		this.tmp_iter = iterable;
+		this.has = this.has.bind(proxy);
+		this.add = this.add.bind(proxy);
+		this.delete = this.delete.bind(proxy);
+		this.clear = this.clear.bind(proxy);
+		this.toString = this.toString.bind(proxy);
+		this[Symbol.iterator] = this[Symbol.iterator].bind(proxy);
+	}
+	has(value) {
 		let me = self(this);
-		me._.elem = elem;
+		return me._.elem.classList.contains(value);
 	}
 	add(value) {
 		let me = self(this);
 		me._.elem.classList.add(value);
-		super.add(value);
 	}
 	delete(value) {
 		let me = self(this);
 		me._.elem.classList.remove(value);
-		super.delete(value);
 	}
 	clear() {
 		let me = self(this);
-		me.elem.removeAttribute("class");
-		super.clear(value);
+		me._.elem.removeAttribute("class");
+	}
+	toString() {
+		let me = self(this);
+		return me._.elem.classList.toString();
+	}
+	[Symbol.iterator]() {
+		let me = self(this);
+		return me._.elem.classList[Symbol.iterator]();
 	}
 }
 
