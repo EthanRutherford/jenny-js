@@ -158,6 +158,8 @@ function removeHandlers(handlers, elem) {
 }
 
 function removeContent(content) {
+	if (!content)
+		return;
 	content = arrayWrap(content);
 	for (let item of content)
 		self(item)._.elem.remove();
