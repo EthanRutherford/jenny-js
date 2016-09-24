@@ -4,8 +4,7 @@
 */
 const self = require("self.js").getSelf();
 
-const arrayWrap = (obj) => obj instanceof Array ? obj : [obj];
-const nameOnlyRegEx = /^[a-z0-9[\].]+$/i;
+const arrayWrap = (obj) => obj == null ? [] : obj instanceof Array ? obj : [obj];
 
 function modelOnSetHandler(target, property, value) {
 	let me = self(this);
@@ -17,8 +16,7 @@ function modelOnSetHandler(target, property, value) {
 function modelOnDelHandler(target, property) {
 	let me = self(this);
 	me._.elem.removeEventListener(property, target[property]);
-	delete target[property];
-	return true;
+	return delete target[property];
 }
 
 function contentArraySetHandler(target, property, value) {
@@ -31,7 +29,7 @@ function contentArraySetHandler(target, property, value) {
 		let oldNode = me._.elem.childNodes[i];
 		//and the new node
 		let newNode = self(value)._.elem;
-		//if the old node existed somewhere, replace it with a placeholder
+		//if the new node existed somewhere, replace it with a placeholder
 		//this should hopefully only happen temporarily while moving nodes,
 		//one should not absently clone nodes, as the copies are shallow
 		if (newNode.parentNode) {
@@ -43,11 +41,13 @@ function contentArraySetHandler(target, property, value) {
 		//if there was previously a node at this position, replace it
 		//if there wasn't, we must be adding a new one
 		if (oldNode) {
+			removeRefs(target[property]);
 			me._.elem.insertBefore(newNode, oldNode);
 			oldNode.remove();
 		} else {
 			me._.elem.appendChild(newNode);
 		}
+		parseRefs(me._.parent, value)
 	}
 	target[property] = value;
 	return true;
@@ -58,10 +58,12 @@ function contentArrayDelHandler(target, property) {
 	if (Number.isInteger(i)) {
 		//if there is an element at this index, remove it
 		let oldNode = me._.elem.childNodes[i];
-		if (oldNode) oldNode.remove();
+		if (oldNode) {
+			removeRefs(target[property]);
+			oldNode.remove();
+		}
 	}
-	delete target[property];
-	return true;
+	return delete target[property];
 }
 
 function modelHasHandler(target, property) {
@@ -80,6 +82,7 @@ function modelGetHandler(target, property) {
 		case "on":
 		case "class":
 		case "content":
+		case "refs":
 			return target[property];
 		case "text":
 			property = "textContent";
@@ -92,6 +95,7 @@ function modelSetHandler(target, property, value) {
 	let me = self(this._);
 	switch (property) {
 		case "tag":
+		case "refs":
 			return false;
 		case "on":
 			//remove all event handlers, then add new ones
@@ -125,6 +129,8 @@ function modelDelHandler(target, property) {
 	let me = self(this._);
 	switch (property) {
 		case "tag":
+		case "refs":
+		case "text":
 			return false;
 		case "content":
 			//remove all content
@@ -138,8 +144,6 @@ function modelDelHandler(target, property) {
 			//remove all classes
 			me._.elem.removeAttribute("class");
 			return true;
-		case "text":
-			return false;
 		default:
 			//remove an attribute
 			//some elements aren't attributes (i.e. value),
@@ -148,8 +152,7 @@ function modelDelHandler(target, property) {
 			me._.elem.removeAttribute(property);
 			return true;
 	}
-	delete target[property];
-	return true;
+	return delete target[property];
 }
 
 function removeHandlers(handlers, elem) {
@@ -158,11 +161,29 @@ function removeHandlers(handlers, elem) {
 }
 
 function removeContent(content) {
-	if (!content)
-		return;
 	content = arrayWrap(content);
-	for (let item of content)
+	for (let item of content) {
+		removeRefs(item);
 		self(item)._.elem.remove();
+	}
+}
+
+function removeRefs(model) {
+	//stop recursing when we hit a class
+	if (model instanceof JenClass)
+		return;
+	//unset the parent
+	let me = self(model);
+	let parent = me._.parent;
+	me._.parent = null;
+	//remove the refs
+	let refs = model.refs;
+	for (let ref in refs)
+		delete parent[ref];
+	//recurse into content
+	let contents = arrayWrap(model.content);
+	for (content of contents)
+		removeRefs(content);
 }
 
 function generateModel(model) {
@@ -177,6 +198,7 @@ function generateModel(model) {
 	for (let prop in model) {
 		switch (prop) {
 			case "tag":
+			case "refs":
 				break;
 			case "on":
 				generateHandlers(model[prop], elem);
@@ -281,6 +303,34 @@ function proxifyModel(model) {
 	return proxifiedModel;
 }
 
+function parseRefs(parent, model) {
+	//stop recursing when we hit a class
+	if (model instanceof JenClass)
+		return;
+	//set the parent
+	let me = self(model);
+	me._.parent = parent;
+	//prevent modification
+	Object.freeze(model.refs);
+	//parse the refs
+	let refs = model.refs;
+	for (let ref in refs) {
+		if (ref in parent)
+			throw {message: `'${ref}' already present in`, obj: parent};
+		if (!(refs[ref] in model))
+			throw {message: `'${refs[ref]}' is not in`, obj: model};
+		Object.defineProperty(parent, ref, {
+			configurable: true,
+			get: () => {return model[refs[ref]];},
+			set: (value) => {return model[refs[ref]] = value;}
+		});
+	}
+	//recurse into content
+	let contents = arrayWrap(model.content);
+	for (content of contents)
+		parseRefs(parent, content);
+}
+
 class ClassSetProxy {
 	constructor(iterable, proxy) {
 		this.tmp_iter = iterable;
@@ -318,24 +368,12 @@ class ClassSetProxy {
 }
 
 class JenClass {
-	constructor(model, props) {
+	constructor(model) {
 		self.init(this);
 		let me = self(this);
 		me._.model = proxifyModel(model);
+		parseRefs(this, me._.model);
 		me._.elem = self(me._.model)._.elem;
-		for (let prop in props) {
-			if (!props[prop].match(nameOnlyRegEx)) {
-				console.error(
-					"Illegal characters detected in alias '" + prop + "'!",
-					"\nCreation of alias aborted."
-				);
-				continue;
-			}
-			Object.defineProperty(this, prop, {
-				get: new Function("return this." + props[prop] + ";"),
-				set: new Function("value", "return this." + props[prop] + " = value;"),
-			});
-		}
 	}
 	get model() {
 		let me = self(this);
