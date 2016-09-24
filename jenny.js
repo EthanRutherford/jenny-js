@@ -302,7 +302,7 @@ function proxifyModel(model) {
 	//proxify classes
 	model.class = proxifyClasses(model.class || "", proxifiedModel);
 	//proxify content models
-	if (model.content)
+	if (model.content != null)
 		model.content = proxifyContent(model.content, proxifiedModel);
 	//generate the DOM node and set initial state
 	self(proxifiedModel)._.elem = generateModel(model);
@@ -333,10 +333,10 @@ function parseRefs(parent, model) {
 	//parse the refs
 	let refs = model.refs;
 	for (let ref in refs) {
+		if (!refs[ref].match(nameOnlyRegEx))
+			throw {message: `'${refs[ref]}' has illegal characters`};
 		if (ref in parent)
 			throw {message: `'${ref}' already present in parent`, obj: parent};
-		if (!(refs[ref] in model))
-			throw {message: `'${refs[ref]}' is not in model`, obj: model};
 		Object.defineProperty(parent, ref, {
 			configurable: true,
 			get: () => {return model[refs[ref]];},
