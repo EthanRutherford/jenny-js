@@ -83,7 +83,6 @@ function modelGetHandler(target, property) {
 		case "on":
 		case "class":
 		case "content":
-		case "ref":
 		case "refs":
 			return target[property];
 		case "text":
@@ -97,7 +96,6 @@ function modelSetHandler(target, property, value) {
 	let me = self(this._);
 	switch (property) {
 		case "tag":
-		case "ref":
 		case "refs":
 			return false;
 		case "on":
@@ -132,7 +130,6 @@ function modelDelHandler(target, property) {
 	let me = self(this._);
 	switch (property) {
 		case "tag":
-		case "ref":
 		case "refs":
 		case "text":
 			return false;
@@ -181,8 +178,6 @@ function removeRefs(model) {
 	let parent = me._.parent;
 	me._.parent = null;
 	//remove the refs
-	if (model.ref)
-		delete parent[model.ref];
 	let refs = model.refs;
 	for (let ref in refs)
 		delete parent[ref];
@@ -204,7 +199,6 @@ function generateModel(model) {
 	for (let prop in model) {
 		switch (prop) {
 			case "tag":
-			case "ref":
 			case "refs":
 				break;
 			case "on":
@@ -317,17 +311,6 @@ function parseRefs(parent, model) {
 	//set the parent
 	let me = self(model);
 	me._.parent = parent;
-	//add ref to this, if exists
-	if (model.ref) {
-		if (!model.ref.match(nameOnlyRegEx))
-			throw {message: `'${model.ref}' has illegal characters`};
-		if (model.ref in parent)
-			throw {message: `'${model.ref}' already present in parent`, obj: parent};
-		Object.defineProperty(parent, model.ref, {
-			configurable: true,
-			get: () => {return model;}
-		});
-	}
 	//prevent modification
 	Object.freeze(model.refs);
 	//parse the refs
@@ -337,11 +320,18 @@ function parseRefs(parent, model) {
 			throw {message: `'${refs[ref]}' has illegal characters`};
 		if (ref in parent)
 			throw {message: `'${ref}' already present in parent`, obj: parent};
-		Object.defineProperty(parent, ref, {
-			configurable: true,
-			get: () => {return model[refs[ref]];},
-			set: (value) => {return model[refs[ref]] = value;}
-		});
+		if (refs[ref] === "this") {
+			Object.defineProperty(parent, ref, {
+				configurable: true,
+				get: () => {return model;}
+			});
+		} else {
+			Object.defineProperty(parent, ref, {
+				configurable: true,
+				get: () => {return model[refs[ref]];},
+				set: (value) => {return model[refs[ref]] = value;}
+			});
+		}
 	}
 	//recurse into content
 	let contents = arrayWrap(model.content);
