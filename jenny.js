@@ -7,6 +7,24 @@ const self = require("self.js").getSelf();
 const arrayWrap = (obj) => obj == null ? [] : obj instanceof Array ? obj : [obj];
 const nameOnlyRegEx = /^[a-z$_]+$/i;
 
+//these coallesce the two versions of getting/setting/deleting an attribute on an element
+function getAttr(elem, property) {
+	return elem[property] || elem.getAttribute(property);
+}
+function setAttr(elem, property, value) {
+	if (!value) {
+		delAttr(elem, property);
+	} else if (value === true) {
+		elem.setAttribute(property, value);
+	} else {
+		elem[property] = value;
+	}
+}
+function delAttr(elem, property) {
+	elem[property] = null;
+	elem.removeAttribute(property);
+}
+
 function modelOnSetHandler(target, property, value) {
 	let me = self(this);
 	me._.elem.removeEventListener(property, target[property]);
@@ -88,7 +106,7 @@ function modelGetHandler(target, property) {
 		case "text":
 			property = "textContent";
 		default:
-			let ans = me._.elem[property];
+			let ans = getAttr(me._.elem, property);
 			return ans instanceof Function ? undefined : ans;
 	}
 }
@@ -120,7 +138,7 @@ function modelSetHandler(target, property, value) {
 			property = "textContent";
 		default:
 			//change a property
-			me._.elem[property] = value;
+			setAttr(me._.elem, property, value);
 			return true;
 	}
 	target[property] = value;
@@ -147,10 +165,7 @@ function modelDelHandler(target, property) {
 			return true;
 		default:
 			//remove an attribute
-			//some elements aren't attributes (i.e. value),
-			//so setting them to "" is a decently safe fallback
-			me._.elem[property] = "";
-			me._.elem.removeAttribute(property);
+			delAttr(me._.elem, property);
 			return true;
 	}
 	return delete target[property];
@@ -212,7 +227,7 @@ function generateModel(model) {
 				break;
 			default:
 				//anything else is assumed to be a property
-				elem[prop] = model[prop];
+				setAttr(elem, prop, model[prop])
 				delete model[prop];
 				break;
 		}
