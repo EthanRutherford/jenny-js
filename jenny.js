@@ -2,7 +2,7 @@
 	requirements
 	self.js
 */
-const self = require("self.js").getSelf();
+const self = require("./self.js").getSelf();
 
 const arrayWrap = (obj) => obj == null ? [] : obj instanceof Array ? obj : [obj];
 const nameOnlyRegEx = /^[a-z$_]+$/i;
