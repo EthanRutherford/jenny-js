@@ -10,9 +10,9 @@
 		return reqs.match(splitRegex) || [];
 	}
 	//executes the code, and returns the result of module.exports
-	function execute(code) {
+	function execute(code, file) {
 		let module = {};
-		(new Function("module", code)).call(null, module);
+		(new Function("module", "require", code)).call(null, module, (src => requireCore(src, file)));
 		return module.exports;
 	}
 	//call to load the resource
@@ -49,7 +49,7 @@
 				//call require with relative path on all requirements, and
 				//when done, resolve with the value of the module export
 				Promise.all(reqs.map((req) => requireCore(req, src))).then(() => {
-					loaded[src] = execute(result);
+					loaded[src] = execute(result, src);
 					resolve(loaded[src]);
 				}).catch((error) => {
 					reject(error);
@@ -101,7 +101,7 @@
 	}
 	//external require call, which exports to window.require
 	this.require = function(src) {
-		//call the worker function, with relativeTo set to webroot
+		//call the worker function, with relativeTo set to origin
 		return requireCore(src, this.location.origin);
 	}
 	//disallow modifying require
