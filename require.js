@@ -4,16 +4,28 @@
 	//Regex for getting requirements comment
 	const requirementsRegex = /\/\*\s*requirements((?:\s|\S)*?)\*\//;
 	const splitRegex = /\S+/g;
+	//call to parse urls
+	function parseUrl(src, relativeTo) {
+		//create a url out of the source
+		let url = new URL(src, relativeTo);
+		//make sure the location matches the current domain
+		if (url.hostname !== this.location.hostname)
+			throw new Error(`require refused to load cross domain resource '${src}'`);
+		return url.origin + url.pathname;
+	}
 	//reads the source for requirements
 	function getRequirements(code) {
 		let reqs = (code.match(requirementsRegex) || [])[1] || "";
 		return reqs.match(splitRegex) || [];
 	}
 	//executes the code, and returns the result of module.exports
-	function execute(code, file) {
+	function execute(code, src) {
 		let module = {};
-		(new Function("module", "require", code)).call(null, module, (src => requireCore(src, file)));
-		return module.exports;
+		Object.defineProperty(module, "exports", {
+			get: (value) => loaded[src].module,
+			set: (value) => loaded[src].module = value
+		});
+		(new Function("module", "require", code)).call(null, module, (req => requireCore(req, src)));
 	}
 	//call to load the resource
 	function load(src) {
@@ -36,32 +48,60 @@
 	}
 	//require a javascript file
 	function requireJs(src) {
-		//if it is in the loaded map, it was already preloaded
-		//otherwise, we must preload it, and all of it's dependencies
+		//if it isn't in the loaded map, it wasn't preloaded. throw an error
+		if (!loaded[src])
+			throw new Error(`${src} was required without being preloaded.`);
+		//if we don't already have the module, execute the code
+		if (!loaded[src].module)
+			execute(loaded[src].code, src);
+		return loaded[src].module;
+	}
+	//the recursive inner require call
+	//this is what does the work inside modules
+	function requireCore(src, relativeTo) {
+		//parse the url
+		let url = parseUrl(src, relativeTo);
+		//check to see this is css
+		if (src.includes(".css"))
+			return;
+		//load the javascript
+		return requireJs(url);
+	}
+	//preload a javascript file
+	function preloadJs(src, set) {
+		//if we've already checked this file, return true
+		if (set.has(src))
+			return true;
+		//if we already have a promise, return the promise
 		if (loaded[src])
-			return loaded[src];
-		//set loaded to a promise which resolves when the module is loaded
-		loaded[src] = new Promise((resolve, reject) => {
-			//load the module
-			load(src).then((result) => {
-				//get the requirements
-				let reqs = getRequirements(result);
-				//call require with relative path on all requirements, and
-				//when done, resolve with the value of the module export
-				Promise.all(reqs.map((req) => requireCore(req, src))).then(() => {
-					loaded[src] = execute(result, src);
-					resolve(loaded[src]);
+			return loaded[src].promise;
+		//otherwise, preload with a promise which resolves when the module is loaded
+		loaded[src] = {
+			promise: new Promise((resolve, reject) => {
+				//load the module
+				load(src).then((result) => {
+					//now we have the text, add it to the loaded module
+					loaded[src].code = result;
+					//get the requirements
+					let reqs = getRequirements(result);
+					//preload with relative path on all requirements, and resolve when done
+					Promise.all(reqs.map((req) => preloadCore(req, src, set))).then(() => {
+						resolve(true);
+					}).catch((error) => {
+						reject(error);
+					});
 				}).catch((error) => {
 					reject(error);
 				});
-			}).catch((error) => {
-				reject(error);
-			});
-		});
-		return loaded[src];
+			})
+		};
+		//add this file to the stuff we've already seen
+		set.add(src);
+		//return the promise
+		return loaded[src].promise;
 	}
-	//require a css file
-	function requireCss(src) {
+	//preload a css file
+	function preloadCss(src) {
 		//if a link with that name exists, return true
 		if (document.querySelectorAll("a[href='" + src + "']").length)
 			return true;
@@ -80,31 +120,35 @@
 			}
 		});
 	}
-	//call to parse urls
-	function parseUrl(src, relativeTo) {
-		//create a url out of the source
-		let url = new URL(src, relativeTo);
-		//make sure the location matches the current domain
-		if (url.hostname !== this.location.hostname)
-			throw new Error(`require refused to load cross domain resource '${src}'`);
-		return url.origin + url.pathname;
-	}
-	//the recursive inner require call
-	function requireCore(src, relativeTo) {
+	//core preloader
+	function preloadCore(src, relativeTo, set) {
 		//parse the url
 		let url = parseUrl(src, relativeTo);
 		//check to see if we are loading css
 		if (src.includes(".css"))
-			return requireCss(url);
-		//else loading javascript
-		return requireJs(url);
+			return preloadCss(url);
+		//otherwise load javascript
+		return preloadJs(url, set);
 	}
-	//external require call, which exports to window.require
-	this.require = function(src) {
-		//call the worker function, with relativeTo set to origin
-		return requireCore(src, this.location.origin);
+	//external main loader, which exports to window.main
+	const main = function(src) {
+		//preload everything, then execute the main module
+		//this will then execute its dependencies as it comes to them
+		preloadCore(src, this.location.origin, new Set()).then(() => {
+			//call the worker function, with relativeTo set to origin
+			requireCore(src, this.location.origin);
+		});
 	}
-	//disallow modifying require
-	Object.freeze(this.require);
+	//external require function, which exports to window.require
+	//this behaves differently than the module requirer, it returns
+	//a promise which resolves to the module's exports
+	const require = function(src) {
+		return preloadCore(src, this.location.origin, new Set()).then(() => {
+			return requireCore(src, this.location.origin);
+		});
+	}
+	//export as unmodifyable props on window
+	Object.defineProperty(this, "main", {get: () => main});
+	Object.defineProperty(this, "require", {get: () => require});
 })();
 
