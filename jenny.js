@@ -284,6 +284,7 @@ function proxifyClasses(classes, proxy) {
 	return new ClassSetProxy(classes, proxy);
 }
 
+//this method creates a proxy and an element for a given model
 function proxifyModel(model) {
 	//short circuit things that don't need to be proxified
 	if (model instanceof Element || model.is_proxy)
@@ -318,6 +319,61 @@ function proxifyModel(model) {
 	}
 	//generate the DOM node and set initial state
 	self(proxifiedModel)._.elem = generateModel(model);
+	
+	return proxifiedModel;
+}
+
+//this method creates a proxy and a model for a given element
+function proxifyElem(elem) {
+	//if we arent a text or element type, we can't proxify it
+	if (elem.nodeType !== Node.ELEMENT_NODE && elem.nodeType !== Node.TEXT_NODE)
+		return;
+	//create a new model
+	let model = {}
+	//create model hack (see proxifyModel for explanation)
+	let modelHack = {};
+	let proxifiedModel = new Proxy(model, {
+		has: modelHasHandler.bind(modelHack),
+		get: modelGetHandler.bind(modelHack),
+		set: modelSetHandler.bind(modelHack),
+		deleteProperty: modelDelHandler.bind(modelHack)
+	});
+	modelHack._ = proxifiedModel;
+	//init self for the proxy
+	self.init(proxifiedModel);
+	//if this is a text node, create a text model
+	if (elem.nodeType === Node.TEXT_NODE) {
+		//add the text property
+		model.text = elem.textContent;
+	} else if (elem.nodeType === Node.ELEMENT_NODE) {
+		//add the tag name
+		model.tag = elem.tagName.toLowerCase();
+		//add the on property
+		model.on = proxifyHandlers(model.on || {}, proxifiedModel);
+		//create the class proxy
+		model.class = proxifyClasses(elem.className, proxifiedModel);
+		//remove the tmp_iter. we don't need it
+		delete model.class.tmp_iter;
+		//recurse through the child elements
+		if (elem.hasChildNodes()) {
+			if (elem.childNodes.length === 1) {
+				//create the proxy for the content
+				model.content = proxifyElem(elem.childNodes[0]);
+			} else {
+				//create an array of proxy content
+				let content = [];
+				for (let child of elem.childNodes)
+					content.push(proxifyElem(child));
+				//proxify array of content
+				model.content = new Proxy(content, {
+					set: contentArraySetHandler.bind(proxifiedModel),
+					deleteProperty: contentArrayDelHandler.bind(proxifiedModel)
+				});
+			}
+		}
+	}
+	//attatch the elem to the model
+	self(proxifiedModel)._.elem = elem;
 	
 	return proxifiedModel;
 }
@@ -411,13 +467,20 @@ class Element {
 	}
 }
 
+//the root element
+let Root;
+
 const Jenny = {
-	Element: Element,
-	initDOM: (root) => {
-		let me = self(root);
-		document.body.appendChild(me._.elem);
+	Element,
+	get Root() {
+		return Root;
+	},
+	set Root(elem) {
+		Root = proxifyElem(elem);
 	}
 }
+
+Object.freeze(Jenny);
 
 module.exports = Jenny;
 
