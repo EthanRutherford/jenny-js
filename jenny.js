@@ -186,7 +186,7 @@ function removeContent(content) {
 
 function removeRefs(model) {
 	//stop recursing when we hit a class
-	if (model instanceof JenClass)
+	if (model instanceof Element)
 		return;
 	//unset the parent
 	let me = self(model);
@@ -286,7 +286,7 @@ function proxifyClasses(classes, proxy) {
 
 function proxifyModel(model) {
 	//short circuit things that don't need to be proxified
-	if (model instanceof JenClass || model.is_proxy)
+	if (model instanceof Element || model.is_proxy)
 		return model;
 	if (typeof model === "string")
 		return proxifyModel({text: model});
@@ -321,7 +321,7 @@ function proxifyModel(model) {
 
 function parseRefs(parent, model) {
 	//stop recursing when we hit a class
-	if (model instanceof JenClass)
+	if (model instanceof Element)
 		return;
 	//set the parent
 	let me = self(model);
@@ -390,7 +390,7 @@ class ClassSetProxy {
 	}
 }
 
-class JenClass {
+class Element {
 	constructor(model) {
 		self.init(this);
 		let me = self(this);
@@ -409,7 +409,7 @@ class JenClass {
 }
 
 const Jenny = {
-	JenClass: JenClass,
+	Element: Element,
 	initDOM: (root) => {
 		let me = self(root);
 		document.body.appendChild(me._.elem);
