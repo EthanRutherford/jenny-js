@@ -306,13 +306,16 @@ function proxifyModel(model) {
 	modelHack._ = proxifiedModel;
 	//init self for the proxy
 	self.init(proxifiedModel);
-	//proxify "on" property
-	model.on = proxifyHandlers(model.on || {}, proxifiedModel);
-	//proxify classes
-	model.class = proxifyClasses(model.class || "", proxifiedModel);
-	//proxify content models
-	if (model.content != null)
-		model.content = proxifyContent(model.content, proxifiedModel);
+	//if this is a text node, we have no props of any sort
+	if (!model.text) {
+		//proxify "on" property
+		model.on = proxifyHandlers(model.on || {}, proxifiedModel);
+		//proxify classes
+		model.class = proxifyClasses(model.class || "", proxifiedModel);
+		//proxify content models
+		if (model.content != null)
+			model.content = proxifyContent(model.content, proxifiedModel);
+	}
 	//generate the DOM node and set initial state
 	self(proxifiedModel)._.elem = generateModel(model);
 	
