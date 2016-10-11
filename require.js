@@ -25,6 +25,9 @@
 			get: (value) => loaded[src].module,
 			set: (value) => loaded[src].module = value
 		});
+		//let the debugger know what name to use in debug statements
+		code = code + `//# sourceURL=${src}`;
+		//construct and execute the function
 		(new Function("module", "require", code)).call(null, module, (req => requireCore(req, src)));
 	}
 	//call to load the resource
