@@ -9,7 +9,10 @@ const nameOnlyRegEx = /^[a-z$_]+$/i;
 
 //these coallesce the two versions of getting/setting/deleting an attribute on an element
 function getAttr(elem, property) {
-	return elem[property] || elem.getAttribute(property);
+	let val = elem[property];
+	if (val != null)
+		return val;
+	return elem.getAttribute(property);
 }
 function setAttr(elem, property, value) {
 	if (!value) {
