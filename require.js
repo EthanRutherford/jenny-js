@@ -106,7 +106,7 @@
 	//preload a css file
 	function preloadCss(src) {
 		//if a link with that name exists, return true
-		if (document.querySelectorAll("a[href='" + src + "']").length)
+		if (document.querySelectorAll("link[href='" + src + "']").length)
 			return true;
 		//otherwise, return a promise that resolves when the css is loaded
 		return new Promise((resolve, reject) => {
