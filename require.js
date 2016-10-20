@@ -8,10 +8,8 @@
 	function parseUrl(src, relativeTo) {
 		//create a url out of the source
 		let url = new URL(src, relativeTo);
-		//make sure the location matches the current domain
-		if (url.hostname !== this.location.hostname)
-			throw new Error(`require refused to load cross domain resource '${src}'`);
-		return url.origin + url.pathname;
+		//return the href
+		return url.href;
 	}
 	//reads the source for requirements
 	function getRequirements(code) {
