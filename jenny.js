@@ -90,7 +90,10 @@ function contentArrayDelHandler(target, property) {
 
 function modelHasHandler(target, property) {
 	let me = self(this._);
-	return property in target || (property in me._.elem && !(me._.elem[property] instanceof Function));
+	return 
+		property === "computedStyle" ||
+		property in target ||
+		(property in me._.elem && !(me._.elem[property] instanceof Function));
 }
 function modelGetHandler(target, property) {
 	//if the value is not a special property, return it from the dom
@@ -106,6 +109,8 @@ function modelGetHandler(target, property) {
 		case "content":
 		case "refs":
 			return target[property];
+		case "computedStyle":
+			return window.getComputedStyle(me._.elem);
 		case "text":
 			property = "textContent";
 		default:
@@ -118,6 +123,7 @@ function modelSetHandler(target, property, value) {
 	switch (property) {
 		case "tag":
 		case "refs":
+		case "computedStyle":
 			return false;
 		case "on":
 			//remove all event handlers, then add new ones
@@ -153,6 +159,7 @@ function modelDelHandler(target, property) {
 		case "tag":
 		case "refs":
 		case "text":
+		case "computedStyle":
 			return false;
 		case "content":
 			//remove all content
