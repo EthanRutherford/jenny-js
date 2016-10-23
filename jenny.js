@@ -28,6 +28,7 @@ function delAttr(elem, property) {
 	elem.removeAttribute(property);
 }
 
+//handlers for special props
 function modelOnSetHandler(target, property, value) {
 	let me = self(this);
 	me._.elem.removeEventListener(property, target[property]);
@@ -88,6 +89,85 @@ function contentArrayDelHandler(target, property) {
 	return delete target[property];
 }
 
+//model callback object literals
+function modelGetAttr({property, me}) {
+	let ans = getAttr(me._.elem, property);
+	return ans instanceof Function ? undefined : ans;
+}
+const modelGetCallbacks = {
+	is_proxy: () => true,
+	tag: ({target}) => target.tag,
+	on: ({target}) => target.on,
+	class: ({target}) => target.class,
+	content: ({target}) => target.content,
+	refs: ({target}) => target.refs,
+	computedStyle: ({me}) => window.getComputedStyle(me._.elem),
+	text: ({me}) => modelGetAttr({me, property: "textContent"}),
+};
+
+function modelSetAttr({property, value, me}) {
+	setAttr(me._.elem, property, value);
+	return true;
+}
+const modelSetCallbacks = {
+	is_proxy: () => false,
+	tag: () => false,
+	refs: () => false,
+	text: () => false,
+	computedStyle: () => false,
+	on: ({target, value, me}) => {
+		//remove all event handlers, then add new ones
+		removeHandlers(target.on, me._.elem);
+		target.on = proxifyHandlers(value, me.$);
+		generateHandlers(target.on, me._.elem);
+		return true;
+	},
+	class: ({target, value, me}) => {
+		//remove classes, and add new ones
+		me._.elem.removeAttribute("class");
+		target.class = proxifyClasses(value, me.$);
+		generateClasses(target.class, me._.elem);
+		return true;
+	},
+	content: ({target, value, me}) => {
+		//remove all content, then add new content
+		removeContent(target.content);
+		target.content = proxifyContent(value, me.$);
+		generateContent(target.content, me._.elem);
+		return true;
+	},
+};
+
+function modelDelAttr({property, me}) {
+	//remove an attribute
+	delAttr(me._.elem, property);
+	return true;
+}
+const modelDelCallbacks = {
+	is_proxy: () => false,
+	tag: () => false,
+	refs: () => false,
+	text: () => false,
+	computedStyle: () => false,
+	content: ({target}) => {
+		//remove all content
+		removeContent(target.content);
+		return delete target.content;
+	},
+	on: ({target, me}) => {
+		//remove all event handlers
+		removeHandlers(target.on, me._.elem);
+		target.on = proxifyHandlers({}, me.$);
+		return true;
+	},
+	class: ({me}) => {
+		//remove all classes
+		me._.elem.removeAttribute("class");
+		return true;
+	},
+};
+
+//the model proxy handlers
 function modelHasHandler(target, property) {
 	let me = self(this._);
 	return 
@@ -98,89 +178,18 @@ function modelHasHandler(target, property) {
 function modelGetHandler(target, property) {
 	//if the value is not a special property, return it from the dom
 	let me = self(this._);
-	switch (property) {
-		//semi-hack to detect if we've already proxified this
-		case "is_proxy":
-			return true;
-		//catch the special properties
-		case "tag":
-		case "on":
-		case "class":
-		case "content":
-		case "refs":
-			return target[property];
-		case "computedStyle":
-			return window.getComputedStyle(me._.elem);
-		case "text":
-			property = "textContent";
-		default:
-			let ans = getAttr(me._.elem, property);
-			return ans instanceof Function ? undefined : ans;
-	}
+	return (modelGetCallbacks[property] || modelGetAttr)({target, property, me});
 }
 function modelSetHandler(target, property, value) {
 	let me = self(this._);
-	switch (property) {
-		case "tag":
-		case "refs":
-		case "computedStyle":
-			return false;
-		case "on":
-			//remove all event handlers, then add new ones
-			removeHandlers(target[property], me._.elem);
-			value = proxifyHandlers(value, me.$);
-			generateHandlers(value, me._.elem);
-			break;
-		case "class":
-			//remove classes, and add new ones
-			me._.elem.removeAttribute("class");
-			value = proxifyClasses(value, me.$);
-			generateClasses(value, me._.elem);
-			break;
-		case "content":
-			//remove all content, then add new content
-			removeContent(target[property]);
-			value = proxifyContent(value, me.$);
-			generateContent(value, me._.elem);
-			break;
-		case "text":
-			property = "textContent";
-		default:
-			//change a property
-			setAttr(me._.elem, property, value);
-			return true;
-	}
-	target[property] = value;
-	return true;
+	return (modelSetCallbacks[property] || modelSetAttr)({target, property, value, me});
 }
 function modelDelHandler(target, property) {
 	let me = self(this._);
-	switch (property) {
-		case "tag":
-		case "refs":
-		case "text":
-		case "computedStyle":
-			return false;
-		case "content":
-			//remove all content
-			removeContent(target[property]);
-			break;
-		case "on":
-			//remove all event handlers
-			removeHandlers(target[property], me._.elem);
-			return true;
-		case "class":
-			//remove all classes
-			me._.elem.removeAttribute("class");
-			return true;
-		default:
-			//remove an attribute
-			delAttr(me._.elem, property);
-			return true;
-	}
-	return delete target[property];
+	return (modelDelCallbacks[property] || modelDelAttr)({target, property, me});
 }
 
+//functions related to manipulating models
 function removeHandlers(handlers, elem) {
 	for (let handler in handlers)
 		elem.removeEventListener(handler, handlers[handler]);
@@ -212,6 +221,17 @@ function removeRefs(model) {
 		removeRefs(content);
 }
 
+function generateModelAttr({elem, property, model}) {
+	setAttr(elem, property, model[property])
+	delete model[property];
+}
+const generateModelCallbacks = {
+	tag: () => {},
+	refs: () => {},
+	on: ({elem, model}) => generateHandlers(model.on, elem),
+	class: ({elem, model}) => generateClasses(model.class, elem),
+	content: ({elem, model}) => generateContent(model.content, elem),
+};
 function generateModel(model) {
 	//if text node, create text node
 	if (model.text) {
@@ -221,27 +241,8 @@ function generateModel(model) {
 	}
 	//create the node
 	let elem = document.createElement(model.tag);
-	for (let prop in model) {
-		switch (prop) {
-			case "tag":
-			case "refs":
-				break;
-			case "on":
-				generateHandlers(model[prop], elem);
-				break;
-			case "class":
-				generateClasses(model[prop], elem);
-				break;
-			case "content":
-				generateContent(model[prop], elem);
-				break;
-			default:
-				//anything else is assumed to be a property
-				setAttr(elem, prop, model[prop])
-				delete model[prop];
-				break;
-		}
-	}
+	for (let property in model)
+		(generateModelCallbacks[property] || generateModelAttr)({elem, property, model});
 	return elem;
 }
 
@@ -291,7 +292,7 @@ function proxifyClasses(classes, proxy) {
 		classes = classes.trim().split(/\s+/).filter((s) => s !== "");
 	if (!(classes instanceof Array))
 		classes = [];
-	return new ClassSetProxy(classes, proxy);
+	return new ClassSet(classes, proxy);
 }
 
 //this method creates a proxy and an element for a given model
@@ -423,7 +424,7 @@ function parseRefs(parent, model) {
 		parseRefs(parent, content);
 }
 
-class ClassSetProxy {
+class ClassSet {
 	constructor(iterable, proxy) {
 		this.tmp_iter = iterable;
 		this.has = this.has.bind(proxy);
