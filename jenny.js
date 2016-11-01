@@ -5,7 +5,6 @@
 const self = require("./self.js").getSelf();
 
 const arrayWrap = (obj) => obj == null ? [] : obj instanceof Array ? obj : [obj];
-const nameOnlyRegEx = /^[a-z$_]+$/i;
 
 //these coallesce the two versions of getting/setting/deleting an attribute on an element
 function getAttr(elem, property) {
@@ -42,6 +41,11 @@ function modelOnDelHandler(target, property) {
 	return delete target[property];
 }
 
+function contentArrayGetHandler(target, property) {
+	if (property === "is_proxy")
+		return true;
+	return target[property];
+}
 function contentArraySetHandler(target, property, value) {
 	let me = self(this);
 	let i = Number(property);
@@ -64,13 +68,13 @@ function contentArraySetHandler(target, property, value) {
 		//if there was previously a node at this position, replace it
 		//if there wasn't, we must be adding a new one
 		if (oldNode) {
-			removeRefs(target[property]);
+			removeRef(target[property]);
 			me._.elem.insertBefore(newNode, oldNode);
 			oldNode.remove();
 		} else {
 			me._.elem.appendChild(newNode);
 		}
-		parseRefs(me._.parent, value)
+		setRef(me._.owner, value);
 	}
 	target[property] = value;
 	return true;
@@ -82,7 +86,7 @@ function contentArrayDelHandler(target, property) {
 		//if there is an element at this index, remove it
 		let oldNode = me._.elem.childNodes[i];
 		if (oldNode) {
-			removeRefs(target[property]);
+			removeRef(target[property]);
 			oldNode.remove();
 		}
 	}
@@ -100,7 +104,6 @@ const modelGetCallbacks = {
 	on: ({target}) => target.on,
 	class: ({target}) => target.class,
 	content: ({target}) => target.content,
-	refs: ({target}) => target.refs,
 	computedStyle: ({me}) => window.getComputedStyle(me._.elem),
 	text: ({me}) => modelGetAttr({me, property: "textContent"}),
 };
@@ -112,7 +115,7 @@ function modelSetAttr({property, value, me}) {
 const modelSetCallbacks = {
 	is_proxy: () => false,
 	tag: () => false,
-	refs: () => false,
+	ref: () => false,
 	text: () => false,
 	computedStyle: () => false,
 	on: ({target, value, me}) => {
@@ -133,6 +136,9 @@ const modelSetCallbacks = {
 		//remove all content, then add new content
 		removeContent(target.content);
 		target.content = proxifyContent(value, me.$);
+		let contents = arrayWrap(target.content);
+		for (let content of contents)
+			setRef(me._.owner, content);
 		generateContent(target.content, me._.elem);
 		return true;
 	},
@@ -146,7 +152,6 @@ function modelDelAttr({property, me}) {
 const modelDelCallbacks = {
 	is_proxy: () => false,
 	tag: () => false,
-	refs: () => false,
 	text: () => false,
 	computedStyle: () => false,
 	content: ({target}) => {
@@ -198,27 +203,23 @@ function removeHandlers(handlers, elem) {
 function removeContent(content) {
 	content = arrayWrap(content);
 	for (let item of content) {
-		removeRefs(item);
+		removeRef(item);
 		self(item)._.elem.remove();
 	}
 }
 
-function removeRefs(model) {
+function removeRef(model) {
+	let me = self(model);
+	//remove the ref
+	if (me._.refname)
+		delete me._.owner[me._.refname];
 	//stop recursing when we hit a class
 	if (model instanceof Element)
 		return;
-	//unset the parent
-	let me = self(model);
-	let parent = me._.parent;
-	me._.parent = null;
-	//remove the refs
-	let refs = model.refs;
-	for (let ref in refs)
-		delete parent[ref];
 	//recurse into content
 	let contents = arrayWrap(model.content);
 	for (content of contents)
-		removeRefs(content);
+		removeRef(content);
 }
 
 function generateModelAttr({elem, property, model}) {
@@ -227,7 +228,6 @@ function generateModelAttr({elem, property, model}) {
 }
 const generateModelCallbacks = {
 	tag: () => {},
-	refs: () => {},
 	on: ({elem, model}) => generateHandlers(model.on, elem),
 	class: ({elem, model}) => generateClasses(model.class, elem),
 	content: ({elem, model}) => generateContent(model.content, elem),
@@ -273,11 +273,14 @@ function proxifyHandlers(on, proxy) {
 }
 
 function proxifyContent(content, proxy) {
+	if (content.is_proxy)
+		return content;
 	if (content instanceof Array) {
 		for (let item in content)
 			content[item] = proxifyModel(content[item]);
 		//proxify array of content
 		content = new Proxy(content, {
+			get: contentArrayGetHandler.bind(proxy),
 			set: contentArraySetHandler.bind(proxy),
 			deleteProperty: contentArrayDelHandler.bind(proxy)
 		});
@@ -300,9 +303,13 @@ function proxifyModel(model) {
 	//short circuit things that don't need to be proxified
 	if (model instanceof Element || model.is_proxy)
 		return model;
-	if (typeof model === "string")
-		return proxifyModel({text: model});
-	if (typeof model === "number" || typeof model == "boolean")
+	//special case for tag instanceof Element
+	if (model.tag instanceof Element) {
+		self(model.tag)._.refname = model.ref;
+		return model.tag;
+	}
+	//check for text nodes
+	if (typeof model === "string" || typeof model === "number" || typeof model === "boolean")
 		return proxifyModel({text: model.toString()});
 	//create proxified model
 	//since we can't bind to proxifiedModel before we create it, we must hack
@@ -327,6 +334,9 @@ function proxifyModel(model) {
 		//proxify content models
 		if (model.content != null)
 			model.content = proxifyContent(model.content, proxifiedModel);
+		//set and remove ref
+		self(proxifiedModel)._.refname = model.ref;
+		delete model.ref;
 	}
 	//generate the DOM node and set initial state
 	self(proxifiedModel)._.elem = generateModel(model);
@@ -340,7 +350,7 @@ function proxifyElem(elem) {
 	if (elem.nodeType !== Node.ELEMENT_NODE && elem.nodeType !== Node.TEXT_NODE)
 		return;
 	//create a new model
-	let model = {}
+	let model = {};
 	//create model hack (see proxifyModel for explanation)
 	let modelHack = {};
 	let proxifiedModel = new Proxy(model, {
@@ -389,39 +399,26 @@ function proxifyElem(elem) {
 	return proxifiedModel;
 }
 
-function parseRefs(parent, model) {
+function setRef(owner, model) {
+	let me = self(model);
+	//set the owner
+	me._.owner = owner;
+	//set the ref property
+	if (me._.refname) {
+		if (me._.refname in owner)
+			throw {message: `'${me._.refname}' already present in Element`, obj: owner};
+		Object.defineProperty(owner, me._.refname, {
+			configurable: true,
+			get: () => model
+		});
+	}
 	//stop recursing when we hit a class
 	if (model instanceof Element)
 		return;
-	//set the parent
-	let me = self(model);
-	me._.parent = parent;
-	//prevent modification
-	Object.freeze(model.refs);
-	//parse the refs
-	let refs = model.refs;
-	for (let ref in refs) {
-		if (!refs[ref].match(nameOnlyRegEx))
-			throw {message: `'${refs[ref]}' has illegal characters`};
-		if (ref in parent)
-			throw {message: `'${ref}' already present in parent`, obj: parent};
-		if (refs[ref] === "this") {
-			Object.defineProperty(parent, ref, {
-				configurable: true,
-				get: () => {return model;}
-			});
-		} else {
-			Object.defineProperty(parent, ref, {
-				configurable: true,
-				get: () => {return model[refs[ref]];},
-				set: (value) => {return model[refs[ref]] = value;}
-			});
-		}
-	}
 	//recurse into content
 	let contents = arrayWrap(model.content);
-	for (content of contents)
-		parseRefs(parent, content);
+	for (let content of contents)
+		setRef(owner, content);
 }
 
 class ClassSet {
@@ -465,7 +462,7 @@ class Element {
 		self.init(this);
 		let me = self(this);
 		me._.model = proxifyModel(model);
-		parseRefs(this, me._.model);
+		setRef(this, me._.model);
 		me._.elem = self(me._.model)._.elem;
 	}
 	get model() {
