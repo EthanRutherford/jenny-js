@@ -27,7 +27,7 @@ function delAttr(elem, property) {
 	elem.removeAttribute(property);
 }
 
-//handlers for special props
+//handlers for event handler prop
 function modelOnSetHandler(target, property, value) {
 	let me = self(this);
 	me._.elem.removeEventListener(property, target[property]);
@@ -41,6 +41,7 @@ function modelOnDelHandler(target, property) {
 	return delete target[property];
 }
 
+//handlers for content array
 function contentArrayGetHandler(target, property) {
 	if (property === "is_proxy")
 		return true;
@@ -93,6 +94,13 @@ function contentArrayDelHandler(target, property) {
 	return delete target[property];
 }
 
+//handler for css style
+function cssStyleDelHandler(target, property) {
+	//deleting is a no op for CssStyleDeclaration, so set it to the empty string instead
+	target[property] = "";
+	return true;
+}
+
 //model callback object literals
 function modelGetAttr({property, me}) {
 	let ans = getAttr(me._.elem, property);
@@ -103,6 +111,7 @@ const modelGetCallbacks = {
 	tag: ({target}) => target.tag,
 	on: ({target}) => target.on,
 	class: ({target}) => target.class,
+	style: ({target}) => target.style,
 	content: ({target}) => target.content,
 	computedStyle: ({me}) => window.getComputedStyle(me._.elem),
 	text: ({me}) => modelGetAttr({me, property: "textContent"}),
@@ -128,8 +137,13 @@ const modelSetCallbacks = {
 	class: ({target, value, me}) => {
 		//remove classes, and add new ones
 		me._.elem.removeAttribute("class");
-		target.class = proxifyClasses(value, me.$);
 		generateClasses(target.class, me._.elem);
+		return true;
+	},
+	style: ({target, value, me}) => {
+		//remove styles, and add new ones
+		me._.elem.removeAttribute("style");
+		generateStyle(value, me._.elem);
 		return true;
 	},
 	content: ({target, value, me}) => {
@@ -154,11 +168,6 @@ const modelDelCallbacks = {
 	tag: () => false,
 	text: () => false,
 	computedStyle: () => false,
-	content: ({target}) => {
-		//remove all content
-		removeContent(target.content);
-		return delete target.content;
-	},
 	on: ({target, me}) => {
 		//remove all event handlers
 		removeHandlers(target.on, me._.elem);
@@ -169,6 +178,16 @@ const modelDelCallbacks = {
 		//remove all classes
 		me._.elem.removeAttribute("class");
 		return true;
+	},
+	style: ({me}) => {
+		//remove all styles
+		me._.elem.removeAttribute("style");
+		return true;
+	},
+	content: ({target}) => {
+		//remove all content
+		removeContent(target.content);
+		return delete target.content;
 	},
 };
 
@@ -229,7 +248,14 @@ function generateModelAttr({elem, property, model}) {
 const generateModelCallbacks = {
 	tag: () => {},
 	on: ({elem, model}) => generateHandlers(model.on, elem),
-	class: ({elem, model}) => generateClasses(model.class, elem),
+	class: ({elem, model}) => {
+		generateClasses(model.class, elem);
+		model.class = proxifyClasses(elem);
+	},
+	style: ({elem, model}) => {
+		generateStyle(model.style, elem);
+		model.style = proxifyStyle(elem);
+	},
 	content: ({elem, model}) => generateContent(model.content, elem),
 };
 function generateModel(model) {
@@ -246,33 +272,57 @@ function generateModel(model) {
 	return elem;
 }
 
-function generateHandlers(handlers, parent) {
+function generateHandlers(handlers, elem) {
 	//object containing handlers
 	for (let handler in handlers)
-		parent.addEventListener(handler, handlers[handler]);
+		elem.addEventListener(handler, handlers[handler]);
 }
 
-function generateClasses(classes, parent) {
-	for (let item of classes.tmp_iter)
-		parent.classList.add(item);
-	delete classes.tmp_iter;
+function generateClasses(classes, elem) {
+	if (typeof classes === "string")
+		classes = classes.trim().split(/\s+/).filter((s) => s !== "");
+	if (!(classes instanceof Array))
+		classes = [];
+	for (let item of classes)
+		elem.classList.add(item);
 }
 
-function generateContent(content, parent) {
+function generateStyle(style, elem) {
+	if (typeof style === "string") {
+		elem.style = style;
+	} else if (typeof style === "object") {
+		for (let prop in style)
+			elem.style[prop] = style[prop];
+	}
+}
+
+function generateContent(content, elem) {
 	//array containing html content
 	content = arrayWrap(content);
 	for (let item of content)
-		parent.appendChild(self(item)._.elem);
+		elem.appendChild(self(item)._.elem);
 }
 
 function proxifyHandlers(on, proxy) {
 	return new Proxy(on, {
 		set: modelOnSetHandler.bind(proxy),
-		deleteProperty: modelOnDelHandler.bind(proxy)
+		deleteProperty: modelOnDelHandler.bind(proxy),
 	});
 }
 
+function proxifyClasses(elem) {
+	//this method actually has to be called after generateStyle
+	return new ClassSet(elem);
+}
+
+function proxifyStyle(elem) {
+	//this method actually has to be called after generateStyle
+	return new Proxy(elem.style, {deleteProperty: cssStyleDelHandler});
+}
+
 function proxifyContent(content, proxy) {
+	if (content == null)
+		return null;
 	if (content.is_proxy)
 		return content;
 	if (content instanceof Array) {
@@ -282,20 +332,12 @@ function proxifyContent(content, proxy) {
 		content = new Proxy(content, {
 			get: contentArrayGetHandler.bind(proxy),
 			set: contentArraySetHandler.bind(proxy),
-			deleteProperty: contentArrayDelHandler.bind(proxy)
+			deleteProperty: contentArrayDelHandler.bind(proxy),
 		});
 	} else {
 		content = proxifyModel(content);
 	}
 	return content;
-}
-
-function proxifyClasses(classes, proxy) {
-	if (typeof classes === "string")
-		classes = classes.trim().split(/\s+/).filter((s) => s !== "");
-	if (!(classes instanceof Array))
-		classes = [];
-	return new ClassSet(classes, proxy);
 }
 
 //this method creates a proxy and an element for a given model
@@ -320,7 +362,7 @@ function proxifyModel(model) {
 		has: modelHasHandler.bind(modelHack),
 		get: modelGetHandler.bind(modelHack),
 		set: modelSetHandler.bind(modelHack),
-		deleteProperty: modelDelHandler.bind(modelHack)
+		deleteProperty: modelDelHandler.bind(modelHack),
 	});
 	modelHack._ = proxifiedModel;
 	//init self for the proxy
@@ -330,10 +372,11 @@ function proxifyModel(model) {
 		//proxify "on" property
 		model.on = proxifyHandlers(model.on || {}, proxifiedModel);
 		//proxify classes
-		model.class = proxifyClasses(model.class || "", proxifiedModel);
+		model.class = model.class || undefined;
+		//style isn't proxified until after generated
+		model.style = model.style || undefined;
 		//proxify content models
-		if (model.content != null)
-			model.content = proxifyContent(model.content, proxifiedModel);
+		model.content = proxifyContent(model.content, proxifiedModel);
 		//set and remove ref
 		self(proxifiedModel)._.refname = model.ref;
 		delete model.ref;
@@ -357,7 +400,7 @@ function proxifyElem(elem) {
 		has: modelHasHandler.bind(modelHack),
 		get: modelGetHandler.bind(modelHack),
 		set: modelSetHandler.bind(modelHack),
-		deleteProperty: modelDelHandler.bind(modelHack)
+		deleteProperty: modelDelHandler.bind(modelHack),
 	});
 	modelHack._ = proxifiedModel;
 	//init self for the proxy
@@ -372,9 +415,9 @@ function proxifyElem(elem) {
 		//add the on property
 		model.on = proxifyHandlers(model.on || {}, proxifiedModel);
 		//create the class proxy
-		model.class = proxifyClasses(elem.className, proxifiedModel);
-		//remove the tmp_iter. we don't need it
-		delete model.class.tmp_iter;
+		model.class = proxifyClasses(elem);
+		//create the style proxy
+		model.style = proxifyStyle(elem);
 		//recurse through the child elements
 		if (elem.hasChildNodes()) {
 			if (elem.childNodes.length === 1) {
@@ -388,7 +431,7 @@ function proxifyElem(elem) {
 				//proxify array of content
 				model.content = new Proxy(content, {
 					set: contentArraySetHandler.bind(proxifiedModel),
-					deleteProperty: contentArrayDelHandler.bind(proxifiedModel)
+					deleteProperty: contentArrayDelHandler.bind(proxifiedModel),
 				});
 			}
 		}
@@ -409,7 +452,7 @@ function setRef(owner, model) {
 			throw {message: `'${me._.refname}' already present in Element`, obj: owner};
 		Object.defineProperty(owner, me._.refname, {
 			configurable: true,
-			get: () => model
+			get: () => model,
 		});
 	}
 	//stop recursing when we hit a class
@@ -422,38 +465,31 @@ function setRef(owner, model) {
 }
 
 class ClassSet {
-	constructor(iterable, proxy) {
-		this.tmp_iter = iterable;
-		this.has = this.has.bind(proxy);
-		this.add = this.add.bind(proxy);
-		this.delete = this.delete.bind(proxy);
-		this.clear = this.clear.bind(proxy);
-		this.toString = this.toString.bind(proxy);
-		this[Symbol.iterator] = this[Symbol.iterator].bind(proxy);
+	constructor(elem) {
+		this.has = this.has.bind(elem);
+		this.add = this.add.bind(elem);
+		this.delete = this.delete.bind(elem);
+		this.clear = this.clear.bind(elem);
+		this.toString = this.toString.bind(elem);
+		this[Symbol.iterator] = this[Symbol.iterator].bind(elem);
 	}
 	has(value) {
-		let me = self(this);
-		return me._.elem.classList.contains(value);
+		return this.classList.contains(value);
 	}
 	add(value) {
-		let me = self(this);
-		me._.elem.classList.add(value);
+		this.classList.add(value);
 	}
 	delete(value) {
-		let me = self(this);
-		me._.elem.classList.remove(value);
+		this.classList.remove(value);
 	}
 	clear() {
-		let me = self(this);
-		me._.elem.removeAttribute("class");
+		this.removeAttribute("class");
 	}
 	toString() {
-		let me = self(this);
-		return me._.elem.classList.toString();
+		return this.classList.toString();
 	}
 	[Symbol.iterator]() {
-		let me = self(this);
-		return me._.elem.classList[Symbol.iterator]();
+		return this.classList[Symbol.iterator]();
 	}
 }
 
@@ -485,7 +521,7 @@ const Jenny = {
 	},
 	set Root(elem) {
 		Root = proxifyElem(elem);
-	}
+	},
 }
 
 Object.freeze(Jenny);
