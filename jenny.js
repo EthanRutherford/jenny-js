@@ -1,7 +1,4 @@
-/*
-	requirements
-	self.js
-*/
+//# preload ./self.js
 const self = require("./self.js").getSelf();
 
 const arrayWrap = (obj) => obj == null ? [] : obj instanceof Array ? obj : [obj];
@@ -14,13 +11,12 @@ function getAttr(elem, property) {
 	return elem.getAttribute(property);
 }
 function setAttr(elem, property, value) {
-	if (!value) {
+	if (!value)
 		delAttr(elem, property);
-	} else if (value === true) {
+	else if (value === true)
 		elem.setAttribute(property, value);
-	} else {
+	else
 		elem[property] = value;
-	}
 }
 function delAttr(elem, property) {
 	elem[property] = null;
@@ -43,7 +39,7 @@ function modelOnDelHandler(target, property) {
 
 //handlers for content array
 function contentArrayGetHandler(target, property) {
-	if (property === "is_proxy")
+	if (property === "__isProxy")
 		return true;
 	return target[property];
 }
@@ -107,7 +103,7 @@ function modelGetAttr({property, me}) {
 	return ans instanceof Function ? undefined : ans;
 }
 const modelGetCallbacks = {
-	is_proxy: () => true,
+	__isProxy: () => true,
 	tag: ({target}) => target.tag,
 	on: ({target}) => target.on,
 	class: ({target}) => target.class,
@@ -122,7 +118,7 @@ function modelSetAttr({property, value, me}) {
 	return true;
 }
 const modelSetCallbacks = {
-	is_proxy: () => false,
+	__isProxy: () => false,
 	tag: () => false,
 	ref: () => false,
 	text: () => false,
@@ -134,13 +130,13 @@ const modelSetCallbacks = {
 		generateHandlers(target.on, me._.elem);
 		return true;
 	},
-	class: ({target, value, me}) => {
+	class: ({value, me}) => {
 		//remove classes, and add new ones
 		me._.elem.removeAttribute("class");
-		generateClasses(target.class, me._.elem);
+		generateClasses(value, me._.elem);
 		return true;
 	},
-	style: ({target, value, me}) => {
+	style: ({value, me}) => {
 		//remove styles, and add new ones
 		me._.elem.removeAttribute("style");
 		generateStyle(value, me._.elem);
@@ -164,7 +160,7 @@ function modelDelAttr({property, me}) {
 	return true;
 }
 const modelDelCallbacks = {
-	is_proxy: () => false,
+	__isProxy: () => false,
 	tag: () => false,
 	text: () => false,
 	computedStyle: () => false,
@@ -194,8 +190,7 @@ const modelDelCallbacks = {
 //the model proxy handlers
 function modelHasHandler(target, property) {
 	let me = self(this._);
-	return 
-		property === "computedStyle" ||
+	return property === "computedStyle" ||
 		property in target ||
 		(property in me._.elem && !(me._.elem[property] instanceof Function));
 }
@@ -242,7 +237,7 @@ function removeRef(model) {
 }
 
 function generateModelAttr({elem, property, model}) {
-	setAttr(elem, property, model[property])
+	setAttr(elem, property, model[property]);
 	delete model[property];
 }
 const generateModelCallbacks = {
@@ -323,7 +318,7 @@ function proxifyStyle(elem) {
 function proxifyContent(content, proxy) {
 	if (content == null)
 		return null;
-	if (content.is_proxy)
+	if (content.__isProxy)
 		return content;
 	if (content instanceof Array) {
 		for (let item in content)
@@ -343,7 +338,7 @@ function proxifyContent(content, proxy) {
 //this method creates a proxy and an element for a given model
 function proxifyModel(model) {
 	//short circuit things that don't need to be proxified
-	if (model instanceof Element || model.is_proxy)
+	if (model instanceof Element || model.__isProxy)
 		return model;
 	//special case for tag instanceof Element
 	if (model.tag instanceof Element) {
@@ -391,7 +386,7 @@ function proxifyModel(model) {
 function proxifyElem(elem) {
 	//if we arent a text or element type, we can't proxify it
 	if (elem.nodeType !== Node.ELEMENT_NODE && elem.nodeType !== Node.TEXT_NODE)
-		return;
+		return null;
 	//create a new model
 	let model = {};
 	//create model hack (see proxifyModel for explanation)
@@ -522,7 +517,7 @@ const Jenny = {
 	set Root(elem) {
 		Root = proxifyElem(elem);
 	},
-}
+};
 
 Object.freeze(Jenny);
 

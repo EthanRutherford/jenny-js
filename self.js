@@ -13,6 +13,6 @@ class Self {
 }
 
 module.exports = {
-	getSelf: () => new Self()
+	getSelf: () => new Self(),
 };
 
