@@ -61,14 +61,27 @@
 			execute(loaded[src].code, src);
 		return loaded[src].module;
 	}
+	//require a json file
+	function requireJSON(src) {
+		//if it isn't in the loaded map, it wasn't preloaded. throw an error
+		if (!loaded[src])
+			throw new Error(`${src} was required without being preloaded.`);
+		//if we haven't already parsed it, parse JSON
+		if (!loaded[src].module)
+			loaded[src].module = JSON.parse(loaded[src].code);
+		return loaded[src].module;
+	}
 	//the recursive inner require call
 	//this is what does the work inside modules
 	function requireCore(src, relativeTo) {
 		//parse the url
 		let url = parseUrl(src, relativeTo);
-		//check to see this is css
+		//check to see if this is css
 		if (src.includes(".css"))
 			return null;
+		//check to see if this is json
+		if (src.includes(".json"))
+			return requireJSON(url);
 		//load the javascript
 		return requireJs(url);
 	}
@@ -95,6 +108,31 @@
 					}).catch((error) => {
 						reject(error);
 					});
+				}).catch((error) => {
+					reject(error);
+				});
+			}),
+		};
+		//add this file to the stuff we've already seen
+		set.add(src);
+		//return the promise
+		return loaded[src].promise;
+	}
+	//preload a json file
+	function preloadJSON(src, set) {
+		//if we've already checked this file, return true
+		if (set.has(src))
+			return true;
+		//if we already have a promise, return the promise
+		if (loaded[src])
+			return loaded[src].promise;
+		//otherwise, preload with a promise which resolves when the json is loaded
+		loaded[src] = {
+			promise: new Promise((resolve, reject) => {
+				load(src).then((result) => {
+					//add text to the loaded module
+					loaded[src].code = result;
+					resolve(true);
 				}).catch((error) => {
 					reject(error);
 				});
@@ -132,6 +170,9 @@
 		//check to see if we are loading css
 		if (src.includes(".css"))
 			return preloadCss(url);
+		//check to see if we are loading json
+		if (src.includes(".json"))
+			return preloadJSON(url, set);
 		//otherwise load javascript
 		return preloadJs(url, set);
 	}
