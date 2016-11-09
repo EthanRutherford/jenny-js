@@ -3,6 +3,9 @@ const self = require("./self.js").getSelf();
 
 const arrayWrap = (obj) => obj == null ? [] : obj instanceof Array ? obj : [obj];
 
+//reverse item lookup table
+const ModelMap = new WeakMap();
+
 //these coallesce the two versions of getting/setting/deleting an attribute on an element
 function getAttr(elem, property) {
 	let val = elem[property];
@@ -98,6 +101,18 @@ function cssStyleDelHandler(target, property) {
 }
 
 //model callback object literals
+const modelHasProps = {
+	tag: true,
+	on: true,
+	class: true,
+	style: true,
+	content: true,
+	computedStyle: true,
+	text: true,
+	parent: true,
+	owner: true,
+};
+
 function modelGetAttr({property, me}) {
 	let ans = getAttr(me._.elem, property);
 	return ans instanceof Function ? undefined : ans;
@@ -111,6 +126,8 @@ const modelGetCallbacks = {
 	content: ({target}) => target.content,
 	computedStyle: ({me}) => window.getComputedStyle(me._.elem),
 	text: ({me}) => modelGetAttr({me, property: "textContent"}),
+	parent: ({me}) => ModelMap.get(me._.elem.parentNode),
+	owner: ({me}) => me._.owner,
 };
 
 function modelSetAttr({property, value, me}) {
@@ -123,6 +140,8 @@ const modelSetCallbacks = {
 	ref: () => false,
 	text: () => false,
 	computedStyle: () => false,
+	parent: () => false,
+	owner: () => false,
 	on: ({target, value, me}) => {
 		//remove all event handlers, then add new ones
 		removeHandlers(target.on, me._.elem);
@@ -162,8 +181,11 @@ function modelDelAttr({property, me}) {
 const modelDelCallbacks = {
 	__isProxy: () => false,
 	tag: () => false,
+	ref: () => false,
 	text: () => false,
 	computedStyle: () => false,
+	parent: () => false,
+	owner: () => false,
 	on: ({target, me}) => {
 		//remove all event handlers
 		removeHandlers(target.on, me._.elem);
@@ -190,9 +212,7 @@ const modelDelCallbacks = {
 //the model proxy handlers
 function modelHasHandler(target, property) {
 	let me = self(this._);
-	return property === "computedStyle" ||
-		property in target ||
-		(property in me._.elem && !(me._.elem[property] instanceof Function));
+	return property in modelHasProps || (property in me._.elem && !(me._.elem[property] instanceof Function));
 }
 function modelGetHandler(target, property) {
 	//if the value is not a special property, return it from the dom
@@ -377,7 +397,10 @@ function proxifyModel(model) {
 		delete model.ref;
 	}
 	//generate the DOM node and set initial state
-	self(proxifiedModel)._.elem = generateModel(model);
+	let elem = generateModel(model);
+	self(proxifiedModel)._.elem = elem;
+	//set up the reverse map
+	ModelMap.set(elem, proxifiedModel);
 	
 	return proxifiedModel;
 }
@@ -505,6 +528,16 @@ class Element {
 		me._.elem.remove();
 	}
 }
+
+//replace Event.target with a getter that returns a Jenny model
+Object.defineProperty(Event.prototype, "domTarget",
+	Object.getOwnPropertyDescriptor(Event.prototype, "target")
+);
+Object.defineProperty(Event.prototype, "target", {
+	get: function() {return ModelMap.get(this.domTarget);},
+	configurable: true,
+	enumerable: true,
+});
 
 //the root element
 let Root;
