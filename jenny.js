@@ -548,7 +548,10 @@ const Jenny = {
 		return Root;
 	},
 	set Root(elem) {
+		if (Root)
+			ModelMap.delete(self(Root)._.elem);
 		Root = proxifyElem(elem);
+		ModelMap.set(elem, Root);
 	},
 };
 
