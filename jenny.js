@@ -94,6 +94,9 @@ function contentArrayDelHandler(target, property) {
 }
 
 //handler for css style
+function cssStyleGetHandler(target, property) {
+	return target[property];
+}
 function cssStyleDelHandler(target, property) {
 	//deleting is a no op for CssStyleDeclaration, so set it to the empty string instead
 	target[property] = "";
@@ -332,7 +335,10 @@ function proxifyClasses(elem) {
 
 function proxifyStyle(elem) {
 	//this method actually has to be called after generateStyle
-	return new Proxy(elem.style, {deleteProperty: cssStyleDelHandler});
+	return new Proxy(elem.style, {
+		get: cssStyleGetHandler,
+		deleteProperty: cssStyleDelHandler,
+	});
 }
 
 function proxifyContent(content, proxy) {
