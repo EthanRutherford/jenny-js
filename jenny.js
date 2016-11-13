@@ -144,6 +144,23 @@ const modelGetCallbacks = {
 	text: ({me}) => modelGetAttr({me, property: "textContent"}),
 	parent: ({me}) => ModelMap.get(me._.elem.parentNode),
 	owner: ({me}) => me._.owner,
+	[dump]: ({me, target}) => () => {
+		if (target[isText])
+			return modelGetAttr({me, property: "textContent"});
+		let ans = {};
+		for (let i = 0; i < me._.elem.attributes.length; i++) {
+			let attribute = me._.elem.attributes[i];
+			ans[attribute.name] = attribute.value;
+		}
+		Object.assign(ans, target, {
+			on: Object.assign({}, target.on),
+			style: me._.elem.style,
+			content: target.content instanceof Array ?
+			target.content[rawContent].map((item) => item[dump]()) :
+			target.content[dump](),
+		});
+		return ans;
+	},
 };
 
 function modelSetAttr({property, value, me}) {
@@ -549,6 +566,15 @@ class Element {
 		let me = self(this);
 		me._.elem.remove();
 	}
+	[dump]() {
+		let ans = {className: this.constructor.name, classConstructor: this.constructor};
+		for (let prop of Object.getOwnPropertyNames(this)) {
+			let value = this[prop];
+			ans[prop] = value[isProxy] || value instanceof Element ? value[dump]() : value;
+		}
+		ans.model = this.model[dump]();
+		return ans;
+	}
 }
 
 //replace Event.target with a getter that returns a Jenny model
@@ -560,6 +586,11 @@ Object.defineProperty(Event.prototype, "target", {
 	configurable: true,
 	enumerable: true,
 });
+
+//convenience function for viewing Jenny data
+console.dump = (item) => {
+	console.log(item[dump]());
+};
 
 //the root element
 let Root;
