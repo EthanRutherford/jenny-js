@@ -2,6 +2,7 @@
 const self = require("./self.js").getSelf();
 
 const arrayWrap = (obj) => obj == null ? [] : obj instanceof Array ? obj : [obj];
+const isProxy = Symbol();
 
 //reverse item lookup table
 const ModelMap = new WeakMap();
@@ -42,7 +43,7 @@ function modelOnDelHandler(target, property) {
 
 //handlers for content array
 function contentArrayGetHandler(target, property) {
-	if (property === "__isProxy")
+	if (property === isProxy)
 		return true;
 	return target[property];
 }
@@ -64,6 +65,7 @@ function contentArraySetHandler(target, property, value) {
 			let junkNode = document.createTextNode("MOVED ELSEWHERE");
 			newNode.parentNode.insertBefore(junkNode, newNode);
 			newNode.remove();
+			removeRef(value);
 		}
 		//if there was previously a node at this position, replace it
 		//if there wasn't, we must be adding a new one
@@ -121,7 +123,7 @@ function modelGetAttr({property, me}) {
 	return ans instanceof Function ? undefined : ans;
 }
 const modelGetCallbacks = {
-	__isProxy: () => true,
+	[isProxy]: () => true,
 	tag: ({target}) => target.tag,
 	on: ({target}) => target.on,
 	class: ({target}) => target.class,
@@ -138,7 +140,7 @@ function modelSetAttr({property, value, me}) {
 	return true;
 }
 const modelSetCallbacks = {
-	__isProxy: () => false,
+	[isProxy]: () => false,
 	tag: () => false,
 	ref: () => false,
 	text: () => false,
@@ -182,7 +184,7 @@ function modelDelAttr({property, me}) {
 	return true;
 }
 const modelDelCallbacks = {
-	__isProxy: () => false,
+	[isProxy]: () => false,
 	tag: () => false,
 	ref: () => false,
 	text: () => false,
@@ -344,7 +346,7 @@ function proxifyStyle(elem) {
 function proxifyContent(content, proxy) {
 	if (content == null)
 		return null;
-	if (content.__isProxy)
+	if (content[isProxy])
 		return content;
 	if (content instanceof Array) {
 		for (let item in content)
@@ -364,7 +366,7 @@ function proxifyContent(content, proxy) {
 //this method creates a proxy and an element for a given model
 function proxifyModel(model) {
 	//short circuit things that don't need to be proxified
-	if (model instanceof Element || model.__isProxy)
+	if (model instanceof Element || model[isProxy])
 		return model;
 	//special case for tag instanceof Element
 	if (model.tag instanceof Element) {
@@ -429,11 +431,8 @@ function proxifyElem(elem) {
 	modelHack._ = proxifiedModel;
 	//init self for the proxy
 	self.init(proxifiedModel);
-	//if this is a text node, create a text model
-	if (elem.nodeType === Node.TEXT_NODE) {
-		//add the text property
-		model.text = elem.textContent;
-	} else if (elem.nodeType === Node.ELEMENT_NODE) {
+	//if this is an element node, create a model
+	if (elem.nodeType === Node.ELEMENT_NODE) {
 		//add the tag name
 		model.tag = elem.tagName.toLowerCase();
 		//add the on property
