@@ -3,6 +3,9 @@ const self = require("./self.js").getSelf();
 
 const arrayWrap = (obj) => obj == null ? [] : obj instanceof Array ? obj : [obj];
 const isProxy = Symbol();
+const isText = Symbol();
+const rawContent = Symbol();
+const dump = Symbol();
 
 //reverse item lookup table
 const ModelMap = new WeakMap();
@@ -45,6 +48,12 @@ function modelOnDelHandler(target, property) {
 function contentArrayGetHandler(target, property) {
 	if (property === isProxy)
 		return true;
+	if (property === rawContent)
+		return target;
+	if (!(property in target))
+		return undefined;
+	if (target[property][isText])
+		return target[property].text;
 	return target[property];
 }
 function contentArraySetHandler(target, property, value) {
@@ -124,11 +133,13 @@ function modelGetAttr({property, me}) {
 }
 const modelGetCallbacks = {
 	[isProxy]: () => true,
+	[isText]: ({target}) => target[isText],
+	[rawContent]: ({target}) => target.content instanceof Array ? target.content[rawContent] : target.content,
 	tag: ({target}) => target.tag,
 	on: ({target}) => target.on,
 	class: ({target}) => target.class,
 	style: ({target}) => target.style,
-	content: ({target}) => target.content,
+	content: ({target}) => target.content[isText] ? target.content.text : target.content,
 	computedStyle: ({me}) => window.getComputedStyle(me._.elem),
 	text: ({me}) => modelGetAttr({me, property: "textContent"}),
 	parent: ({me}) => ModelMap.get(me._.elem.parentNode),
@@ -256,7 +267,7 @@ function removeRef(model) {
 	if (model instanceof Element)
 		return;
 	//recurse into content
-	let contents = arrayWrap(model.content);
+	let contents = arrayWrap(model[rawContent]);
 	for (content of contents)
 		removeRef(content);
 }
@@ -283,6 +294,7 @@ function generateModel(model) {
 	if (model.text) {
 		let elem = document.createTextNode(model.text);
 		delete model.text;
+		model[isText] = true;
 		return elem;
 	}
 	//create the node
@@ -318,6 +330,8 @@ function generateStyle(style, elem) {
 
 function generateContent(content, elem) {
 	//array containing html content
+	if (content instanceof Array)
+		content = content[rawContent];
 	content = arrayWrap(content);
 	for (let item of content)
 		elem.appendChild(self(item)._.elem);
@@ -431,8 +445,11 @@ function proxifyElem(elem) {
 	modelHack._ = proxifiedModel;
 	//init self for the proxy
 	self.init(proxifiedModel);
-	//if this is an element node, create a model
-	if (elem.nodeType === Node.ELEMENT_NODE) {
+	//if this is a text node, create a text model
+	if (elem.nodeType === Node.TEXT_NODE) {
+		//add the text property
+		model[isText] = true;
+	} else if (elem.nodeType === Node.ELEMENT_NODE) {
 		//add the tag name
 		model.tag = elem.tagName.toLowerCase();
 		//add the on property
@@ -482,7 +499,7 @@ function setRef(owner, model) {
 	if (model instanceof Element)
 		return;
 	//recurse into content
-	let contents = arrayWrap(model.content);
+	let contents = arrayWrap(model[rawContent]);
 	for (let content of contents)
 		setRef(owner, content);
 }
