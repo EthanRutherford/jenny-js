@@ -577,19 +577,17 @@ class Element {
 	}
 }
 
-//replace Event.target with a getter that returns a Jenny model
-Object.defineProperty(Event.prototype, "domTarget",
-	Object.getOwnPropertyDescriptor(Event.prototype, "target")
-);
-Object.defineProperty(Event.prototype, "target", {
-	get: function() {return ModelMap.get(this.domTarget);},
+//add Event.targetModel getter that returns the target Jenny Model
+Object.defineProperty(Event.prototype, "targetModel", {
+	get: function() {return ModelMap.get(this.target);},
 	configurable: true,
 	enumerable: true,
 });
 
 //convenience function for viewing Jenny data
-console.dump = (item) => {
-	console.log(item[dump]());
+console.dump = function() { //eslint-disable-line no-console
+	const args = [...arguments].map((item) => item[dump] ? item[dump]() : item);
+	console.log.apply(console, args); //eslint-disable-line no-console
 };
 
 //the root element
