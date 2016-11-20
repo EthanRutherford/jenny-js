@@ -60,6 +60,7 @@ function contentArraySetHandler(target, property, value) {
 	let me = self(this);
 	let i = Number(property);
 	if (Number.isInteger(i)) {
+		disconnectObserver(me.$);
 		//initialize the new value
 		value = proxifyModel(value);
 		//get the old node
@@ -86,6 +87,7 @@ function contentArraySetHandler(target, property, value) {
 			me._.elem.appendChild(newNode);
 		}
 		setRef(me._.owner, value);
+		connectObserver(me.$);
 	}
 	target[property] = value;
 	return true;
@@ -94,12 +96,14 @@ function contentArrayDelHandler(target, property) {
 	let me = self(this);
 	let i = Number(property);
 	if (Number.isInteger(i)) {
+		disconnectObserver(me.$);
 		//if there is an element at this index, remove it
 		let oldNode = me._.elem.childNodes[i];
 		if (oldNode) {
 			removeRef(target[property]);
 			oldNode.remove();
 		}
+		connectObserver(me.$);
 	}
 	return delete target[property];
 }
@@ -139,7 +143,7 @@ const modelGetCallbacks = {
 	on: ({target}) => target.on,
 	class: ({target}) => target.class,
 	style: ({target}) => target.style,
-	content: ({target}) => target.content[isText] ? target.content.text : target.content,
+	content: ({target}) => target.content == null ? undefined : target.content[isText] ? target.content.text : target.content,
 	computedStyle: ({me}) => window.getComputedStyle(me._.elem),
 	text: ({me}) => modelGetAttr({me, property: "textContent"}),
 	parent: ({me}) => ModelMap.get(me._.elem.parentNode),
@@ -155,9 +159,9 @@ const modelGetCallbacks = {
 		Object.assign(ans, target, {
 			on: Object.assign({}, target.on),
 			style: me._.elem.style,
-			content: target.content instanceof Array ?
-			target.content[rawContent].map((item) => item[dump]()) :
-			target.content[dump](),
+			content: target.content == null ? undefined : target.content instanceof Array ?
+				target.content[rawContent].map((item) => item[dump]()) :
+				target.content[dump](),
 		});
 		return ans;
 	},
@@ -169,6 +173,7 @@ function modelSetAttr({property, value, me}) {
 }
 const modelSetCallbacks = {
 	[isProxy]: () => false,
+	[rawContent]: ({target, value}) => target.content = value,
 	tag: () => false,
 	ref: () => false,
 	text: () => false,
@@ -195,6 +200,7 @@ const modelSetCallbacks = {
 		return true;
 	},
 	content: ({target, value, me}) => {
+		disconnectObserver(me.$);
 		//remove all content, then add new content
 		removeContent(target.content);
 		target.content = proxifyContent(value, me.$);
@@ -202,6 +208,7 @@ const modelSetCallbacks = {
 		for (let content of contents)
 			setRef(me._.owner, content);
 		generateContent(target.content, me._.elem);
+		connectObserver(me.$);
 		return true;
 	},
 };
@@ -213,6 +220,7 @@ function modelDelAttr({property, me}) {
 }
 const modelDelCallbacks = {
 	[isProxy]: () => false,
+	[rawContent]: ({target}) => delete target.content,
 	tag: () => false,
 	ref: () => false,
 	text: () => false,
@@ -236,9 +244,12 @@ const modelDelCallbacks = {
 		return true;
 	},
 	content: ({target}) => {
+		disconnectObserver(me.$);
 		//remove all content
 		removeContent(target.content);
-		return delete target.content;
+		let ans = delete target.content;
+		connectObserver(me.$);
+		return ans;
 	},
 };
 
@@ -380,8 +391,8 @@ function proxifyContent(content, proxy) {
 	if (content[isProxy])
 		return content;
 	if (content instanceof Array) {
-		for (let item in content)
-			content[item] = proxifyModel(content[item]);
+		for (let i in content)
+			content[i] = proxifyModel(content[i]);
 		//proxify array of content
 		content = new Proxy(content, {
 			get: contentArrayGetHandler.bind(proxy),
@@ -434,18 +445,25 @@ function proxifyModel(model) {
 		//set and remove ref
 		self(proxifiedModel)._.refname = model.ref;
 		delete model.ref;
+		//create mutation observer
+		self(proxifiedModel)._.observer = new MutationObserver(observerCallback.bind(proxifiedModel));
 	}
 	//generate the DOM node and set initial state
 	let elem = generateModel(model);
 	self(proxifiedModel)._.elem = elem;
 	//set up the reverse map
 	ModelMap.set(elem, proxifiedModel);
+	//set mutation observer
+	connectObserver(proxifiedModel);
 	
 	return proxifiedModel;
 }
 
 //this method creates a proxy and a model for a given element
 function proxifyElem(elem) {
+	//if we are (somehow) already proxified, return the proxy
+	if (ModelMap.has(elem))
+		return ModelMap.get(elem);
 	//if we arent a text or element type, we can't proxify it
 	if (elem.nodeType !== Node.ELEMENT_NODE && elem.nodeType !== Node.TEXT_NODE)
 		return null;
@@ -492,9 +510,15 @@ function proxifyElem(elem) {
 				});
 			}
 		}
+		//create the mutation observer
+		self(proxifiedModel)._.observer = new MutationObserver(observerCallback.bind(proxifiedModel));
 	}
 	//attatch the elem to the model
 	self(proxifiedModel)._.elem = elem;
+	//set up the reverse map
+	ModelMap.set(elem, proxifiedModel);
+	//set mutation observer
+	connectObserver(proxifiedModel);
 	
 	return proxifiedModel;
 }
@@ -519,6 +543,59 @@ function setRef(owner, model) {
 	let contents = arrayWrap(model[rawContent]);
 	for (let content of contents)
 		setRef(owner, content);
+}
+
+//mutation observer functions
+const observerOptions = {childList: true};
+function observerCallback(mutations) {
+	let me = self(this);
+	for (let mutation of mutations) {
+		//handle added or removed nodes
+		if (mutation.addedNodes.length !== 0) {
+			let nodes = [...mutation.addedNodes].map((elem) => proxifyElem(elem));
+			if (me.$.content == null) {
+				me.$[rawContent] = proxifyContent(nodes.length === 1 ? nodes[0] : nodes);
+			} else {
+				if (!(me.$.content instanceof Array))
+					me.$[rawContent] = proxifyContent([me.$[rawContent]]);
+				let startIndex = 0;
+				if (mutation.previousSibling != null) {
+					let sibling = ModelMap.get(mutation.previousSibling);
+					if (sibling === self(sibling)._.owner.model)
+						sibling = self(sibling)._.owner;
+					startIndex = me.$[rawContent].indexOf(sibling) + 1;
+				}
+				me.$[rawContent].splice(startIndex, 0, ...nodes);
+			}
+			for (let node of nodes)
+				setRef(me._.owner, node);
+		} else /* mutation.removedNodes */ {
+			if (me.$.content == null)
+				return;
+			if (!(me.$.content instanceof Array))
+				me.$[rawContent] = proxifyContent([me.$[rawContent]]);
+			for (let node of [...mutation.removedNodes]) {
+				if (!ModelMap.has(node))
+					continue;
+				let child = ModelMap.get(node);
+				if (child === self(child)._.owner.model)
+					child = self(child)._.owner;
+				me.$[rawContent].splice(me.$[rawContent].indexOf(ModelMap.get(node)), 1);
+			}
+			if (me.$[rawContent].length === 0)
+				delete me.$[rawContent];
+		}
+	}
+}
+function connectObserver(proxy) {
+	let me = self(proxy);
+	if (me._.observer)
+		me._.observer.observe(me._.elem, observerOptions);
+}
+function disconnectObserver(proxy) {
+	let me = self(proxy);
+	if (me._.observer)
+		me._.observer.disconnect();
 }
 
 class ClassSet {
@@ -599,10 +676,8 @@ const Jenny = {
 		return Root;
 	},
 	set Root(elem) {
-		if (Root)
-			ModelMap.delete(self(Root)._.elem);
 		Root = proxifyElem(elem);
-		ModelMap.set(elem, Root);
+		setRef(Jenny, Root);
 	},
 };
 
