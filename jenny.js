@@ -3,7 +3,7 @@ const self = require("./self.js").getSelf();
 
 const arrayWrap = (obj) => obj == null ? [] : obj instanceof Array ? obj : [obj];
 const isProxy = Symbol();
-const isText = Symbol();
+const isText = Symbol("TextModel");
 const rawContent = Symbol();
 const dump = Symbol();
 
@@ -50,10 +50,6 @@ function contentArrayGetHandler(target, property) {
 		return true;
 	if (property === rawContent)
 		return target;
-	if (!(property in target))
-		return undefined;
-	if (target[property][isText])
-		return target[property].text;
 	return target[property];
 }
 function contentArraySetHandler(target, property, value) {
@@ -138,12 +134,12 @@ function modelGetAttr({property, me}) {
 const modelGetCallbacks = {
 	[isProxy]: () => true,
 	[isText]: ({target}) => target[isText],
-	[rawContent]: ({target}) => target.content instanceof Array ? target.content[rawContent] : target.content,
+	[rawContent]: ({target}) => target.content,
 	tag: ({target}) => target.tag,
 	on: ({target}) => target.on,
 	class: ({target}) => target.class,
 	style: ({target}) => target.style,
-	content: ({target}) => target.content == null ? undefined : target.content[isText] ? target.content.text : target.content,
+	content: ({target}) => target.content,
 	computedStyle: ({me}) => window.getComputedStyle(me._.elem),
 	text: ({me}) => modelGetAttr({me, property: "textContent"}),
 	parent: ({me}) => ModelMap.get(me._.elem.parentNode),
@@ -159,9 +155,10 @@ const modelGetCallbacks = {
 		Object.assign(ans, target, {
 			on: Object.assign({}, target.on),
 			style: me._.elem.style,
-			content: target.content == null ? undefined : target.content instanceof Array ?
-				target.content[rawContent].map((item) => item[dump]()) :
-				target.content[dump](),
+			content: target.content == null ? undefined :
+				target.content instanceof Array ?
+					target.content.map((item) => item[dump]()) :
+					target.content[dump](),
 		});
 		return ans;
 	},
@@ -295,7 +292,7 @@ function removeRef(model) {
 	if (model instanceof Element)
 		return;
 	//recurse into content
-	let contents = arrayWrap(model[rawContent]);
+	let contents = arrayWrap(model.content);
 	for (content of contents)
 		removeRef(content);
 }
@@ -358,8 +355,6 @@ function generateStyle(style, elem) {
 
 function generateContent(content, elem) {
 	//array containing html content
-	if (content instanceof Array)
-		content = content[rawContent];
 	content = arrayWrap(content);
 	for (let item of content)
 		elem.appendChild(self(item)._.elem);
@@ -540,7 +535,7 @@ function setRef(owner, model) {
 	if (model instanceof Element)
 		return;
 	//recurse into content
-	let contents = arrayWrap(model[rawContent]);
+	let contents = arrayWrap(model.content);
 	for (let content of contents)
 		setRef(owner, content);
 }
@@ -557,15 +552,15 @@ function observerCallback(mutations) {
 				me.$[rawContent] = proxifyContent(nodes.length === 1 ? nodes[0] : nodes);
 			} else {
 				if (!(me.$.content instanceof Array))
-					me.$[rawContent] = proxifyContent([me.$[rawContent]]);
+					me.$[rawContent] = proxifyContent([me.$.content]);
 				let startIndex = 0;
 				if (mutation.previousSibling != null) {
 					let sibling = ModelMap.get(mutation.previousSibling);
 					if (sibling === self(sibling)._.owner.model)
 						sibling = self(sibling)._.owner;
-					startIndex = me.$[rawContent].indexOf(sibling) + 1;
+					startIndex = me.$.content.indexOf(sibling) + 1;
 				}
-				me.$[rawContent].splice(startIndex, 0, ...nodes);
+				me.$.content[rawContent].splice(startIndex, 0, ...nodes);
 			}
 			for (let node of nodes)
 				setRef(me._.owner, node);
@@ -573,16 +568,18 @@ function observerCallback(mutations) {
 			if (me.$.content == null)
 				return;
 			if (!(me.$.content instanceof Array))
-				me.$[rawContent] = proxifyContent([me.$[rawContent]]);
+				me.$[rawContent] = proxifyContent([me.$.content]);
 			for (let node of [...mutation.removedNodes]) {
 				if (!ModelMap.has(node))
 					continue;
 				let child = ModelMap.get(node);
 				if (child === self(child)._.owner.model)
 					child = self(child)._.owner;
-				me.$[rawContent].splice(me.$[rawContent].indexOf(ModelMap.get(node)), 1);
+				me.$.content[rawContent].splice(me.$.content.indexOf(ModelMap.get(node)), 1);
 			}
-			if (me.$[rawContent].length === 0)
+			if (me.$.content.length === 1)
+				me.$[rawContent] = me.$.content[0];
+			else if (me.$.content.length === 0)
 				delete me.$[rawContent];
 		}
 	}
@@ -678,6 +675,16 @@ const Jenny = {
 	set Root(elem) {
 		Root = proxifyElem(elem);
 		setRef(Jenny, Root);
+	},
+	modelToNode(model) {
+		if (!model[isProxy])
+			return undefined;
+		return self(model)._.elem;
+	},
+	nodeToModel(node) {
+		if (!ModelMap.has(node))
+			return undefined;
+		return ModelMap.get(node);
 	},
 };
 
