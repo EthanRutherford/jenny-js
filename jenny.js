@@ -549,10 +549,10 @@ function observerCallback(mutations) {
 		if (mutation.addedNodes.length !== 0) {
 			let nodes = [...mutation.addedNodes].map((elem) => proxifyElem(elem));
 			if (me.$.content == null) {
-				me.$[rawContent] = proxifyContent(nodes.length === 1 ? nodes[0] : nodes);
+				me.$[rawContent] = proxifyContent(nodes.length === 1 ? nodes[0] : nodes, me.$);
 			} else {
 				if (!(me.$.content instanceof Array))
-					me.$[rawContent] = proxifyContent([me.$.content]);
+					me.$[rawContent] = proxifyContent([me.$.content], me.$);
 				let startIndex = 0;
 				if (mutation.previousSibling != null) {
 					let sibling = ModelMap.get(mutation.previousSibling);
@@ -568,7 +568,7 @@ function observerCallback(mutations) {
 			if (me.$.content == null)
 				return;
 			if (!(me.$.content instanceof Array))
-				me.$[rawContent] = proxifyContent([me.$.content]);
+				me.$[rawContent] = proxifyContent([me.$.content], me.$);
 			for (let node of [...mutation.removedNodes]) {
 				if (!ModelMap.has(node))
 					continue;
