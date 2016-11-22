@@ -678,13 +678,18 @@ const Jenny = {
 	},
 	modelToNode(model) {
 		if (!model[isProxy])
-			return undefined;
+			model = Jenny.createModel(model);
 		return self(model)._.elem;
 	},
 	nodeToModel(node) {
 		if (!ModelMap.has(node))
-			return undefined;
+			return proxifyElem(node);
 		return ModelMap.get(node);
+	},
+	createModel(model) {
+		model = proxifyModel(model);
+		setRef(null, model);
+		return model;
 	},
 };
 
