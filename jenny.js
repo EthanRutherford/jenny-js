@@ -411,6 +411,8 @@ function proxifyModel(model) {
 	//check for text nodes
 	if (typeof model === "string" || typeof model === "number" || typeof model === "boolean")
 		return proxifyModel({text: model.toString()});
+	//create a copy of the model
+	model = Object.assign({}, model, {on: Object.assign({}, model.on)});
 	//create proxified model
 	//since we can't bind to proxifiedModel before we create it, we must hack
 	//it in afterward by binding to an object, then adding proxifiedModel as a
