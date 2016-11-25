@@ -18,12 +18,12 @@ function getAttr(elem, property) {
 	return elem.getAttribute(property);
 }
 function setAttr(elem, property, value) {
-	if (!value)
+	if (!value) {
 		delAttr(elem, property);
-	else if (value === true)
+	} else {
 		elem.setAttribute(property, value);
-	else
 		elem[property] = value;
+	}
 }
 function delAttr(elem, property) {
 	elem[property] = null;
