@@ -383,8 +383,6 @@ function proxifyStyle(elem) {
 function proxifyContent(content, proxy) {
 	if (content == null)
 		return null;
-	if (content[isProxy])
-		return content;
 	if (content instanceof Array) {
 		for (let i in content)
 			content[i] = proxifyModel(content[i]);
@@ -394,7 +392,7 @@ function proxifyContent(content, proxy) {
 			set: contentArraySetHandler.bind(proxy),
 			deleteProperty: contentArrayDelHandler.bind(proxy),
 		});
-	} else {
+	} else if (!content[isProxy]) {
 		content = proxifyModel(content);
 	}
 	return content;
