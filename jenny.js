@@ -46,6 +46,8 @@ function modelOnDelHandler(target, property) {
 
 //handlers for content array
 function contentArrayGetHandler(target, property) {
+	let me = self(this);
+	observerCallback.call(me.$, me._.observer.takeRecords());
 	if (property === isProxy)
 		return true;
 	if (property === rawContent)
@@ -56,6 +58,7 @@ function contentArrayGetHandler(target, property) {
 }
 function contentArraySetHandler(target, property, value) {
 	let me = self(this);
+	observerCallback.call(me.$, me._.observer.takeRecords());
 	let i = Number(property);
 	if (Number.isInteger(i)) {
 		disconnectObserver(me.$);
@@ -92,6 +95,7 @@ function contentArraySetHandler(target, property, value) {
 }
 function contentArrayDelHandler(target, property) {
 	let me = self(this);
+	observerCallback.call(me.$, me._.observer.takeRecords());
 	let i = Number(property);
 	if (Number.isInteger(i)) {
 		disconnectObserver(me.$);
@@ -141,7 +145,10 @@ const modelGetCallbacks = {
 	on: ({target}) => target.on,
 	class: ({target}) => target.class,
 	style: ({target}) => target.style,
-	content: ({target}) => target.content,
+	content: ({me, target}) => {
+		observerCallback.call(me.$, me._.observer.takeRecords());
+		return target.content;
+	},
 	computedStyle: ({me}) => window.getComputedStyle(me._.elem),
 	text: ({me}) => modelGetAttr({me, property: "textContent"}),
 	parent: ({me}) => ModelMap.get(me._.elem.parentNode),
@@ -196,6 +203,7 @@ const modelSetCallbacks = {
 		return true;
 	},
 	content: ({target, value, me}) => {
+		observerCallback.call(me.$, me._.observer.takeRecords());
 		disconnectObserver(me.$);
 		//remove all content, then add new content
 		removeContent(target.content);
@@ -240,6 +248,7 @@ const modelDelCallbacks = {
 		return true;
 	},
 	content: ({target}) => {
+		observerCallback.call(me.$, me._.observer.takeRecords());
 		disconnectObserver(me.$);
 		//remove all content
 		removeContent(target.content);
