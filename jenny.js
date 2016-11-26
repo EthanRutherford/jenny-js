@@ -287,8 +287,8 @@ function removeRef(model) {
 	//remove the ref
 	if (me._.refname)
 		delete me._.owner[me._.refname];
-	//stop recursing when we hit a class
-	if (model instanceof Element)
+	//stop recursing when we hit a class or text node
+	if (model instanceof Element || model[isText])
 		return;
 	//recurse into content
 	let contents = arrayWrap(model.content);
@@ -530,8 +530,8 @@ function setRef(owner, model) {
 			get: () => model,
 		});
 	}
-	//stop recursing when we hit a class
-	if (model instanceof Element)
+	//stop recursing when we hit a class or text node
+	if (model instanceof Element || model[isText])
 		return;
 	//recurse into content
 	let contents = arrayWrap(model.content);
