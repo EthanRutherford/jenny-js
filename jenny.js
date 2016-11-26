@@ -50,6 +50,8 @@ function contentArrayGetHandler(target, property) {
 		return true;
 	if (property === rawContent)
 		return target;
+	if (property === dump)
+		return () => target.map((item) => item[dump]());
 	return target[property];
 }
 function contentArraySetHandler(target, property, value) {
@@ -155,10 +157,7 @@ const modelGetCallbacks = {
 		Object.assign(ans, target, {
 			on: Object.assign({}, target.on),
 			style: me._.elem.style,
-			content: target.content == null ? undefined :
-				target.content instanceof Array ?
-					target.content.map((item) => item[dump]()) :
-					target.content[dump](),
+			content: me.$.content == null ? undefined : me.$.content[dump](),
 		});
 		return ans;
 	},
