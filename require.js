@@ -180,17 +180,17 @@
 	const main = function(src) {
 		//preload everything, then execute the main module
 		//this will then execute its dependencies as it comes to them
-		preloadCore(src, this.location.origin, new Set()).then(() => {
-			//call the worker function, with relativeTo set to origin
-			requireCore(src, this.location.origin);
+		preloadCore(src, this.location.href, new Set()).then(() => {
+			//call the worker function, with relativeTo set to current location
+			requireCore(src, this.location.href);
 		});
 	};
 	//external require function, which exports to window.require
 	//this behaves differently than the module requirer, it returns
 	//a promise which resolves to the module's exports
 	const require = function(src) {
-		return preloadCore(src, this.location.origin, new Set()).then(() => {
-			return requireCore(src, this.location.origin);
+		return preloadCore(src, this.location.href, new Set()).then(() => {
+			return requireCore(src, this.location.href);
 		});
 	};
 	//export as unmodifyable props on window
