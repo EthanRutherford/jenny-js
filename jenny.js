@@ -57,8 +57,6 @@ class JennyElement extends Element {
 	}
 	get class() {return this.classList;}
 	set class(name) {return this.classList = name;}
-	get contentEditable() {return this.getAttribute("contenteditable");}
-	set contentEditable(value) {return this.setAttribute("contenteditable", value);}
 }
 
 class Controller {
