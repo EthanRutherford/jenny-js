@@ -44,7 +44,7 @@ class JennyContentArray extends Array {
 	}
 }
 
-class JennyHTMLElement extends Element {
+class JennyElement extends Element {
 	get content() {
 		return new JennyContentArray(...this.childNodes);
 	}
@@ -59,7 +59,7 @@ class JennyHTMLElement extends Element {
 	set class(name) {return this.classList = name;}
 }
 
-class JennyElement {
+class Controller {
 	constructor() {
 		if (this.constructor !== okToConstruct) {
 			throw new Error("Illegal constructor");
@@ -125,38 +125,37 @@ class JennyElement {
 		}
 	})([Element.prototype, Document.prototype, DocumentFragment.prototype]);
 
-	HTMLElement.prototype.__proto__ = JennyHTMLElement.prototype;
+	HTMLElement.prototype.__proto__ = JennyElement.prototype;
 })();
 
-function jElem(tag, children) {
+function jController(tag, children) {
 	if (tag.length > 2 || tag.length === 0) {
 		throw new Error("bad tag");
 	}
 
 	okToConstruct = tag[0];
-	let elem = new tag[0]();
+	let controller = new tag[0]();
 	let props = Object.assign({children}, tag[1]);
 	if (props.ref) {
 		elem._ref = props.ref;
 		delete props.ref;
 	}
 
-	elem.props = props;
-	elem.validateProps();
-	let model = elem.init();
+	controller.props = props;
+	controller.validateProps();
+	let model = controller.init();
 	if (model !== null) {
-		model.controller = elem;
-		privacyMap.set(elem, model);
+		model.controller = controller;
+		privacyMap.set(controller, model);
 	}
 
-	return elem;
+	return controller;
 }
 
 function j(tag, children = []) {
 	if (tag instanceof Array) {
-		return jElem(tag, children);
+		return jController(tag, children);
 	}
-
 	if (Object.keys(tag).length !== 1) {
 		throw new Error("bad tag");
 	}
@@ -182,7 +181,7 @@ function j(tag, children = []) {
 }
 
 function prepareNode(node) {
-	return node instanceof JennyElement ? node.model : node;
+	return node instanceof Controller ? node.model : node;
 }
 
 function attach(node) {
@@ -222,12 +221,12 @@ function detach(node) {
 const observer = new MutationObserver((mutations) => {
 	for (let mutation of mutations) {
 		for (let node of mutation.addedNodes) {
-			if (node instanceof JennyHTMLElement) {
+			if (node instanceof JennyElement) {
 				attach(node);
 			}
 		}
 		for (let node of mutation.removedNodes) {
-			if (node instanceof JennyHTMLElement) {
+			if (node instanceof JennyElement) {
 				detach(node);
 			}
 		}
@@ -236,12 +235,7 @@ const observer = new MutationObserver((mutations) => {
 
 observer.observe(document.body, {childList: true, subtree: true});
 
-function mount(node, elem) {
-	node.append(elem);
-}
-
 module.exports = {
-	Element: JennyElement,
+	Controller,
 	j,
-	mount,
 };
