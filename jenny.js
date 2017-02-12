@@ -137,7 +137,7 @@ function jController(tag, children) {
 	let controller = new tag[0]();
 	let props = Object.assign({children}, tag[1]);
 	if (props.ref) {
-		elem._ref = props.ref;
+		controller._ref = props.ref;
 		delete props.ref;
 	}
 
