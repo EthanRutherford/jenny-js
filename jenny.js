@@ -51,6 +51,8 @@ class JennyHTMLElement extends Element {
 	get computedStyle() {
 		return getComputedStyle(this);
 	}
+	get class() {return this.classList;}
+	set class(name) {return this.classList = name;}
 }
 
 class JennyElement {
