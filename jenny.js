@@ -57,6 +57,8 @@ class JennyElement extends Element {
 	}
 	get class() {return this.classList;}
 	set class(name) {return this.classList = name;}
+	get contentEditable() {return this.getAttribute("contenteditable");}
+	set contentEditable(value) {return this.setAttribute("contenteditable", value);}
 }
 
 class Controller {
@@ -64,10 +66,14 @@ class Controller {
 		if (this.constructor !== okToConstruct) {
 			throw new Error("Illegal constructor");
 		}
-		for (let name of Object.getOwnPropertyNames(this.__proto__)) {
-			if (this[name] instanceof Function && !["constructor", "init"].includes(name)) {
-				this[name] = this[name].bind(this);
-			}
+
+		let descriptors = Object.getOwnPropertyDescriptors(this.__proto__);
+		let names = Object.keys(descriptors).filter((name) => {
+			return !["constructor", "init"].includes(name) && descriptors[name].value instanceof Function;
+		});
+
+		for (let name of names) {
+			this[name] = this[name].bind(this);
 		}
 
 		this.props = {};
@@ -87,10 +93,10 @@ class Controller {
 		for (let propName of Object.keys(propTypes)) {
 			let prop = this.props[propName];
 			let propType = propTypes[propName];
-			if (prop == null) {
-				console.warn(`Missing prop '${propName}: ${propType.name}' in ${this.constructor.name}`);
-			} else if (!(prop.constructor === propType || prop instanceof propType)) {
-				console.warn(`Failed propType '${propName}: ${propType.name}' in ${this.constructor.name}`);
+			if (prop == null && propType.required) {
+				console.warn(`Missing prop '${propName}: ${propType.type.name}' in ${this.constructor.name}`);
+			} else if (prop != null && !(prop.constructor === propType.type || prop instanceof propType.type)) {
+				console.warn(`Failed propType '${propName}: ${propType.type.name}' in ${this.constructor.name}`);
 			}
 		}
 	}
@@ -238,4 +244,8 @@ observer.observe(document.body, {childList: true, subtree: true});
 module.exports = {
 	Controller,
 	j,
+	PropTypes: {
+		required: (type) => ({required: true, type}),
+		optional: (type) => ({required: false, type}),
+	},
 };
