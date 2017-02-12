@@ -48,6 +48,10 @@ class JennyHTMLElement extends Element {
 	get content() {
 		return new JennyContentArray(...this.childNodes);
 	}
+	set content(newContent) {
+		while (this.lastChild) this.lastChild.remove();
+		this.append(...newContent);
+	}
 	get computedStyle() {
 		return getComputedStyle(this);
 	}
@@ -60,7 +64,13 @@ class JennyElement {
 		if (this.constructor !== okToConstruct) {
 			throw new Error("Illegal constructor");
 		}
+		for (let name of Object.getOwnPropertyNames(this.__proto__)) {
+			if (this[name] instanceof Function && !["constructor", "init"].includes(name)) {
+				this[name] = this[name].bind(this);
+			}
+		}
 
+		this.props = {};
 		okToConstruct = null;
 	}
 	init() {
@@ -71,6 +81,18 @@ class JennyElement {
 	}
 	remove() {
 		this.model.remove();
+	}
+	validateProps() {
+		let propTypes = this.constructor.propTypes || {};
+		for (let propName of Object.keys(propTypes)) {
+			let prop = this.props[propName];
+			let propType = propTypes[propName];
+			if (prop == null) {
+				console.warn(`Missing prop '${propName}: ${propType.name}' in ${this.constructor.name}`);
+			} else if (!(prop.constructor === propType || prop instanceof propType)) {
+				console.warn(`Failed propType '${propName}: ${propType.name}' in ${this.constructor.name}`);
+			}
+		}
 	}
 }
 
@@ -119,7 +141,9 @@ function jElem(tag, children) {
 		delete props.ref;
 	}
 
-	let model = elem.init(Object.assign({children}, props));
+	elem.props = props;
+	elem.validateProps();
+	let model = elem.init();
 	if (model !== null) {
 		model.controller = elem;
 		privacyMap.set(elem, model);
@@ -165,8 +189,13 @@ function attach(node) {
 	if (node._ref instanceof Function) {
 		node._ref(node);
 	}
-	if (node.controller && node.controller._ref instanceof Function) {
-		node.controller._ref(node.controller);
+	if (node.controller) {
+		if (node.controller.didMount instanceof Function) {
+			window.setTimeout(() => node.controller.didMount());
+		}
+		if (node.controller._ref instanceof Function) {
+			node.controller._ref(node.controller);
+		}
 	}
 	for (let child of node.children) {
 		attach(child);
@@ -177,8 +206,13 @@ function detach(node) {
 	if (node._ref instanceof Function) {
 		node._ref(null);
 	}
-	if (node.controller && node.controller._ref instanceof Function) {
-		node.controller._ref(null);
+	if (node.controller) {
+		if (node.controller.didUnmount instanceof Function) {
+			window.setTimeout(() => node.controller.didUnmount());
+		}
+		if (node.controller._ref instanceof Function) {
+			node.controller._ref(null);
+		}
 	}
 	for (let child of node.children) {
 		detach(child);
