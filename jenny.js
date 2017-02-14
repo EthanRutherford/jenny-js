@@ -176,11 +176,7 @@ function j(tag, children = []) {
 		elem[prop] = props[prop];
 	}
 
-	children = children.filter((child) => child != null);
-	for (let child of children) {
-		elem.append(child);
-	}
-
+	elem.append(...children.filter((child) => child != null));
 	return elem;
 }
 
