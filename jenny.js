@@ -69,7 +69,6 @@ class Controller {
 		let names = Object.keys(descriptors).filter((name) => {
 			return !["constructor", "init"].includes(name) && descriptors[name].value instanceof Function;
 		});
-
 		for (let name of names) {
 			this[name] = this[name].bind(this);
 		}
@@ -85,18 +84,6 @@ class Controller {
 	}
 	remove() {
 		this.model.remove();
-	}
-	validateProps() {
-		let propTypes = this.constructor.propTypes || {};
-		for (let propName of Object.keys(propTypes)) {
-			let prop = this.props[propName];
-			let propType = propTypes[propName];
-			if (prop == null && propType.required) {
-				console.warn(`Missing prop '${propName}: ${propType.type.name}' in ${this.constructor.name}`);
-			} else if (prop != null && !(prop.constructor === propType.type || prop instanceof propType.type)) {
-				console.warn(`Failed propType '${propName}: ${propType.type.name}' in ${this.constructor.name}`);
-			}
-		}
 	}
 }
 
@@ -137,8 +124,8 @@ function jController(tag, children) {
 		throw new Error("bad tag");
 	}
 
-	okToConstruct = tag[0];
-	let controller = new tag[0]();
+	const Controller = okToConstruct = tag[0];
+	let controller = new Controller();
 	let props = Object.assign({children}, tag[1]);
 	if (props.ref) {
 		controller._ref = props.ref;
@@ -146,7 +133,7 @@ function jController(tag, children) {
 	}
 
 	controller.props = props;
-	controller.validateProps();
+	validate(true, Controller.name, "", controller.props, PropTypes.shapeOf(Controller.propTypes || {}));
 	let model = controller.init();
 	if (model !== null) {
 		model.controller = controller;
@@ -185,36 +172,36 @@ function prepareNode(node) {
 }
 
 function attach(node) {
+	for (let child of node.children) {
+		attach(child);
+	}
 	if (node._ref instanceof Function) {
 		node._ref(node);
 	}
 	if (node.controller) {
-		if (node.controller.didMount instanceof Function) {
-			window.setTimeout(() => node.controller.didMount());
-		}
 		if (node.controller._ref instanceof Function) {
 			node.controller._ref(node.controller);
 		}
-	}
-	for (let child of node.children) {
-		attach(child);
+		if (node.controller.didMount instanceof Function) {
+			node.controller.didMount();
+		}
 	}
 }
 
 function detach(node) {
+	for (let child of node.children) {
+		detach(child);
+	}
 	if (node._ref instanceof Function) {
 		node._ref(null);
 	}
 	if (node.controller) {
-		if (node.controller.didUnmount instanceof Function) {
-			window.setTimeout(() => node.controller.didUnmount());
-		}
 		if (node.controller._ref instanceof Function) {
 			node.controller._ref(null);
 		}
-	}
-	for (let child of node.children) {
-		detach(child);
+		if (node.controller.didUnmount instanceof Function) {
+			node.controller.didUnmount();
+		}
 	}
 }
 
@@ -235,11 +222,38 @@ const observer = new MutationObserver((mutations) => {
 
 observer.observe(document.body, {childList: true, subtree: true});
 
-module.exports = {
-	Controller,
-	j,
-	PropTypes: {
-		required: (type) => ({required: true, type}),
-		optional: (type) => ({required: false, type}),
+function validate(required, constructor, name, prop, propType, typeName = propType.name) {
+	if (prop == null) {
+		if (required) {
+			console.warn(`Missing prop '${name}: ${typeName}' in ${constructor}`);
+		}
+		return;
+	}
+	if (propType.prototype) {
+		if (!(prop.constructor === propType || prop instanceof propType)) {
+			console.warn(`Failed propType '${name}: ${typeName}' in ${constructor}`);
+		}
+	} else {
+		propType(constructor, name, prop);
+	}
+}
+
+const PropTypes = {
+	required: (propType) => (constructor, name, prop) => {
+		validate(true, constructor, name, prop, propType);
+	},
+	arrayOf: (propType) => (constructor, name, prop) => {
+		validate(false, constructor, name, prop, Array);
+		for (let x of prop) {
+			validate(false, constructor, name, x, propType, `arrayOf(${propType.name})`);
+		}
+	},
+	shapeOf: (shape) => (constructor, name, prop) => {
+		validate(false, constructor, name, prop, Object);
+		for (let name of Object.getOwnPropertyNames(shape)) {
+			validate(false, constructor, name, prop[name], shape[name]);
+		}
 	},
 };
+
+module.exports = {Controller, j, PropTypes};
