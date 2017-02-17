@@ -2,12 +2,12 @@ const privacyMap = new WeakMap();
 let okToConstruct = null;
 const indexModulo = (m, n) => m < 0 ? (m % n) + n : m;
 
-const isObject = (val) => val && val.constructor === Object;
+const canAssign = (val) => val && val.constructor === Object || val instanceof Array;
 
 function deepAssign(target = {}, source = {}) {
-	if (!isObject(target) || !isObject(source)) return source;
+	if (!canAssign(target) || !canAssign(source)) return source;
 
-	for (let key of Object.getOwnPropertyNames(source)) {
+	for (let key in source) {
 		target[key] = deepAssign(target[key], source[key]);
 	}
 
@@ -270,7 +270,7 @@ const PropTypes = {
 	},
 	shapeOf: (shape) => (constructor, name, prop) => {
 		validate(false, constructor, name, prop, Object);
-		for (let name of Object.getOwnPropertyNames(shape)) {
+		for (let name in shape) {
 			validate(false, constructor, name, prop[name], shape[name]);
 		}
 	},
