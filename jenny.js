@@ -2,6 +2,18 @@ const privacyMap = new WeakMap();
 let okToConstruct = null;
 const indexModulo = (m, n) => m < 0 ? (m % n) + n : m;
 
+const isObject = (val) => val && val.constructor === Object;
+
+function deepAssign(target = {}, source = {}) {
+	if (!isObject(target) || !isObject(source)) return source;
+
+	for (let key of Object.getOwnPropertyNames(source)) {
+		target[key] = deepAssign(target[key], source[key]);
+	}
+
+	return target;
+}
+
 class JennyContentArray extends Array {
 	constructor(...args) {
 		super(...args);
@@ -78,6 +90,14 @@ class Controller {
 	}
 	init() {
 		return null;
+	}
+	updateProps(newProps) {
+		let oldProps = deepAssign({}, this.props);
+		this.props = deepAssign(this.props, newProps);
+		validate(true, this.constructor.name, "", this.props, PropTypes.shapeOf(this.contstructor.propTypes || {}));
+		if (this.propsChanged instanceof Function) {
+			this.propsChanged(oldProps);
+		}
 	}
 	get model() {
 		return privacyMap.get(this);
