@@ -108,34 +108,43 @@ class Controller {
 }
 
 (function updateInterfaces() {
-	function methodReplacer(prototype, oldFunc) {
+	function methodReplacer(oldFunc, returnThis = false) {
 		return function(...nodes) {
 			nodes = nodes.map((node) => prepareNode(node));
 			oldFunc.call(this, ...nodes);
-			return nodes;
+			observerCallback(observer.takeRecords());
+			return returnThis ? this : nodes;
 		};
 	}
 
 	(function updateChildNodesInterface(prototypes) {
 		for (let prototype of prototypes) {
-			prototype.before = methodReplacer(prototype, prototype.before);
-			prototype.after = methodReplacer(prototype, prototype.after);
-			prototype.replaceWith = methodReplacer(prototype, prototype.replaceWith);
-			const oldRemove = prototype.remove;
-			prototype.remove = function() {
-				oldRemove.call(this);
-				return this;
-			};
+			prototype.before = methodReplacer(prototype.before);
+			prototype.after = methodReplacer(prototype.after);
+			prototype.replaceWith = methodReplacer(prototype.replaceWith);
+			prototype.remove = methodReplacer(prototype.remove, true);
 		}
 	})([Element.prototype, CharacterData.prototype, DocumentType.prototype]);
 
 	(function updateParentNodesInterface(prototypes) {
 		for (let prototype of prototypes) {
-			prototype.append = methodReplacer(prototype, prototype.append);
-			prototype.prepend = methodReplacer(prototype, prototype.prepend);
+			prototype.append = methodReplacer(prototype.append);
+			prototype.prepend = methodReplacer(prototype.prepend);
 		}
 	})([Element.prototype, Document.prototype, DocumentFragment.prototype]);
 
+	function nodeWrapper(oldFunc) {
+		return function(...args) {
+			let result = oldFunc.call(this, ...args);
+			observerCallback(observer.takeRecords());
+			return result;
+		};
+	}
+
+	Node.prototype.appendChild = nodeWrapper(Node.prototype.appendChild);
+	Node.prototype.insertBefore = nodeWrapper(Node.prototype.insertBefore);
+	Node.prototype.removeChild = nodeWrapper(Node.prototype.removeChild);
+	Node.prototype.replaceChild = nodeWrapper(Node.prototype.replaceChild);
 	HTMLElement.prototype.__proto__ = JennyElement.prototype;
 })();
 
@@ -192,7 +201,7 @@ function prepareNode(node) {
 }
 
 function attach(node) {
-	for (let child of node.children) {
+	for (let child of node.children || []) {
 		attach(child);
 	}
 	if (node._ref instanceof Function) {
@@ -209,7 +218,7 @@ function attach(node) {
 }
 
 function detach(node) {
-	for (let child of node.children) {
+	for (let child of node.children || []) {
 		detach(child);
 	}
 	if (node._ref instanceof Function) {
@@ -225,21 +234,18 @@ function detach(node) {
 	}
 }
 
-const observer = new MutationObserver((mutations) => {
+function observerCallback(mutations) {
 	for (let mutation of mutations) {
 		for (let node of mutation.addedNodes) {
-			if (node instanceof JennyElement) {
-				attach(node);
-			}
+			attach(node);
 		}
 		for (let node of mutation.removedNodes) {
-			if (node instanceof JennyElement) {
-				detach(node);
-			}
+			detach(node);
 		}
 	}
-});
+}
 
+const observer = new MutationObserver(observerCallback);
 observer.observe(document.body, {childList: true, subtree: true});
 
 function validate(required, constructor, name, prop, propType, typeName = propType.name) {
