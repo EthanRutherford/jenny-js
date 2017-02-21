@@ -4,7 +4,7 @@ const indexModulo = (m, n) => m < 0 ? (m % n) + n : m;
 
 const canAssign = (val) => val && val.constructor === Object || val instanceof Array;
 
-function deepAssign(target = {}, source = {}) {
+function deepAssign(target, source) {
 	if (!canAssign(target) || !canAssign(source)) return source;
 
 	for (let key in source) {
@@ -94,7 +94,7 @@ class Controller {
 	updateProps(newProps) {
 		let oldProps = deepAssign({}, this.props);
 		this.props = deepAssign(this.props, newProps);
-		validate(true, this.constructor.name, "", this.props, PropTypes.shapeOf(this.contstructor.propTypes || {}));
+		validate(true, this.constructor.name, "", this.props, PropTypes.shapeOf(this.constructor.propTypes || {}));
 		if (this.propsChanged instanceof Function) {
 			this.propsChanged(oldProps);
 		}
