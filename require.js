@@ -10,28 +10,37 @@
 		//return the href
 		return url.href;
 	}
-	//reads the source for requirements
-	function getRequirements(code) {
-		let reqs = [];
+	//reads the source for dependencies
+	function getDependencies(code) {
+		let deps = [];
 		let match;
 		while ((match = preloadRegex.exec(code))) {
-			let [, req] = match;
-			reqs.push(req);
+			let [, dep] = match;
+			deps.push(dep);
 		}
-		return reqs;
+		return deps;
+	}
+	//creates a new function which only has access to global scope
+	function getModuleExecutor(code, src) {
+		//stringify the source, adding the sourceURL for debugging
+		code = JSON.stringify(`${code}//# sourceURL=${src}`).slice(1, -1);
+		//create the code which creates the module executor
+		code = `return eval("(module, require) => {\\n${code}\\n}");`;
+		//use the Function constructor to escape to global scope
+		//and return the constructed executor
+		return new Function(code)();
 	}
 	//executes the code, and returns the result of module.exports
 	function execute(code, src) {
-		let module = {};
+		const module = {};
 		Object.defineProperty(module, "exports", {
 			get: () => loaded[src].module,
 			set: (value) => loaded[src].module = value,
 		});
-		//let the debugger know what name to use in debug statements
-		code += `//# sourceURL=${src}`;
+		//create the executor
+		let executor = getModuleExecutor(code, src);
 		//construct and execute the function
-		let func = new Function("module", "require", code);
-		func(module, (req) => requireCore(req, src));
+		executor(module, (dep) => requireCore(dep, src));
 	}
 	//call to load the resource
 	function load(src) {
@@ -109,10 +118,10 @@
 				load(src).then((result) => {
 					//now we have the text, add it to the loaded module
 					loaded[src].code = result;
-					//get the requirements
-					let reqs = getRequirements(result);
-					//preload with relative path on all requirements, and resolve when done
-					Promise.all(reqs.map((req) => preloadCore(req, src, set))).then(() => {
+					//get the dependencies
+					let deps = getDependencies(result);
+					//preload with relative path on all dependencies, and resolve when done
+					Promise.all(preloadDepsCore(deps, src, set)).then(() => {
 						resolve(true);
 					}).catch((error) => {
 						reject(error);
@@ -176,7 +185,7 @@
 		});
 	}
 	//core preloader
-	function preloadCore(src, relativeTo, set) {
+	function preloadCore(src, relativeTo, set, deps = []) {
 		//parse the url
 		let url = parseUrl(src, relativeTo);
 		//check to see if we are loading css
@@ -188,13 +197,21 @@
 			return preloadJSON(url, set);
 		}
 		//otherwise load javascript
-		return preloadJs(url, set);
+		let promises = preloadDepsCore(deps, url, set);
+		promises.push(preloadJs(url, set, deps));
+		return Promise.all(promises);
+	}
+	//preload arrays of dependencies
+	function preloadDepsCore(deps, relativeTo, set) {
+		return deps.map((dep) => preloadCore(dep, relativeTo, set));
 	}
 	//external main loader, which exports to window.main
-	const main = function(src) {
+	//this loads dependencies and begins execution, it does not return a value
+	//you can pass in dependencies here as an optimization
+	const main = function(src, deps) {
 		//preload everything, then execute the main module
 		//this will then execute its dependencies as it comes to them
-		preloadCore(src, this.location.href, new Set()).then(() => {
+		preloadCore(src, this.location.href, new Set(), deps).then(() => {
 			//call the worker function, with relativeTo set to current location
 			requireCore(src, this.location.href);
 		});
