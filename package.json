@@ -1,0 +1,12 @@
+{
+  "name": "jenny-js",
+  "version": "1.0.0",
+  "description": "Jenny is a javascript UI library",
+  "main": "jenny.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EthanRutherford/jenny-js.git"
+  },
+  "author": "Ethan Rutherford",
+  "license": "ISC"
+}
