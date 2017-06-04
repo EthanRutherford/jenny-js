@@ -17,7 +17,6 @@ function deepAssign(target, source) {
 class JennyContentArray extends Array {
 	constructor(...args) {
 		super(...args);
-		this._parent = this[0] ? this[0].parentNode : null;
 	}
 	push(...items) {
 		return super.push.call(this, ...this._parent.append(...items));
@@ -58,7 +57,9 @@ class JennyContentArray extends Array {
 
 class JennyElement extends Element {
 	get content() {
-		return new JennyContentArray(...this.childNodes);
+		const array = new JennyContentArray(...this.childNodes);
+		array._parent = this;
+		return array;
 	}
 	set content(newContent) {
 		while (this.lastChild) this.lastChild.remove();
