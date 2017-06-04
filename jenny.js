@@ -7,7 +7,7 @@ const canAssign = (val) => val && val.constructor === Object || val instanceof A
 function deepAssign(target, source) {
 	if (!canAssign(target) || !canAssign(source)) return source;
 
-	for (let key in source) {
+	for (const key in source) {
 		target[key] = deepAssign(target[key], source[key]);
 	}
 
@@ -51,7 +51,7 @@ class JennyContentArray extends Array {
 		return super.splice.call(this, start, count, ...items).map((item) => item.remove());
 	}
 	replace(index, ...newItems) {
-		let items = this[index].replaceWith(...newItems);
+		const items = this[index].replaceWith(...newItems);
 		super.splice.call(this, index, 1, ...items);
 	}
 }
@@ -77,11 +77,11 @@ class Controller {
 			throw new Error("Illegal constructor");
 		}
 
-		let descriptors = Object.getOwnPropertyDescriptors(this.__proto__);
-		let names = Object.keys(descriptors).filter((name) => {
+		const descriptors = Object.getOwnPropertyDescriptors(this.__proto__);
+		const names = Object.keys(descriptors).filter((name) => {
 			return !["constructor", "init"].includes(name) && descriptors[name].value instanceof Function;
 		});
-		for (let name of names) {
+		for (const name of names) {
 			this[name] = this[name].bind(this);
 		}
 
@@ -92,7 +92,7 @@ class Controller {
 		return null;
 	}
 	updateProps(newProps) {
-		let oldProps = deepAssign({}, this.props);
+		const oldProps = deepAssign({}, this.props);
 		this.props = deepAssign(this.props, newProps);
 		validate(true, this.constructor.name, "", this.props, PropTypes.shapeOf(this.constructor.propTypes || {}));
 		if (this.propsChanged instanceof Function) {
@@ -118,7 +118,7 @@ class Controller {
 	}
 
 	(function updateChildNodesInterface(prototypes) {
-		for (let prototype of prototypes) {
+		for (const prototype of prototypes) {
 			prototype.before = methodReplacer(prototype.before);
 			prototype.after = methodReplacer(prototype.after);
 			prototype.replaceWith = methodReplacer(prototype.replaceWith);
@@ -127,7 +127,7 @@ class Controller {
 	})([Element.prototype, CharacterData.prototype, DocumentType.prototype]);
 
 	(function updateParentNodesInterface(prototypes) {
-		for (let prototype of prototypes) {
+		for (const prototype of prototypes) {
 			prototype.append = methodReplacer(prototype.append);
 			prototype.prepend = methodReplacer(prototype.prepend);
 		}
@@ -135,7 +135,7 @@ class Controller {
 
 	function nodeWrapper(oldFunc) {
 		return function(...args) {
-			let result = oldFunc.call(this, ...args);
+			const result = oldFunc.call(this, ...args);
 			observerCallback(observer.takeRecords());
 			return result;
 		};
@@ -154,8 +154,8 @@ function jController(tag, children) {
 	}
 
 	const Controller = okToConstruct = tag[0];
-	let controller = new Controller();
-	let props = Object.assign({children}, tag[1]);
+	const controller = new Controller();
+	const props = Object.assign({children}, tag[1]);
 	if (props.ref) {
 		controller._ref = props.ref;
 		delete props.ref;
@@ -163,7 +163,7 @@ function jController(tag, children) {
 
 	controller.props = props;
 	validate(true, Controller.name, "", controller.props, PropTypes.shapeOf(Controller.propTypes || {}));
-	let model = controller.init();
+	const model = controller.init();
 	if (model !== null) {
 		model.controller = controller;
 		privacyMap.set(controller, model);
@@ -180,15 +180,15 @@ function j(tag, children = []) {
 		throw new Error("bad tag");
 	}
 
-	let tagName = Object.keys(tag)[0];
-	let props = Object.assign({}, tag[tagName]);
-	let elem = document.createElement(tagName);
+	const tagName = Object.keys(tag)[0];
+	const props = Object.assign({}, tag[tagName]);
+	const elem = document.createElement(tagName);
 	if (props.ref) {
 		elem._ref = props.ref;
 		delete props.ref;
 	}
 
-	for (let prop of Object.keys(props)) {
+	for (const prop of Object.keys(props)) {
 		elem[prop] = props[prop];
 	}
 
@@ -201,7 +201,7 @@ function prepareNode(node) {
 }
 
 function attach(node) {
-	for (let child of node.children || []) {
+	for (const child of node.children || []) {
 		attach(child);
 	}
 	if (node._ref instanceof Function) {
@@ -218,7 +218,7 @@ function attach(node) {
 }
 
 function detach(node) {
-	for (let child of node.children || []) {
+	for (const child of node.children || []) {
 		detach(child);
 	}
 	if (node._ref instanceof Function) {
@@ -235,11 +235,11 @@ function detach(node) {
 }
 
 function observerCallback(mutations) {
-	for (let mutation of mutations) {
-		for (let node of mutation.addedNodes) {
+	for (const mutation of mutations) {
+		for (const node of mutation.addedNodes) {
 			attach(node);
 		}
-		for (let node of mutation.removedNodes) {
+		for (const node of mutation.removedNodes) {
 			detach(node);
 		}
 	}
@@ -270,13 +270,13 @@ const PropTypes = {
 	},
 	arrayOf: (propType) => (constructor, name, prop) => {
 		validate(false, constructor, name, prop, Array);
-		for (let x of prop) {
+		for (const x of prop) {
 			validate(false, constructor, name, x, propType, `arrayOf(${propType.name})`);
 		}
 	},
 	shapeOf: (shape) => (constructor, name, prop) => {
 		validate(false, constructor, name, prop, Object);
-		for (let name in shape) {
+		for (const name in shape) {
 			validate(false, constructor, name, prop[name], shape[name]);
 		}
 	},
