@@ -1,6 +1,6 @@
 {
   "name": "jenny-js",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Jenny is a javascript UI library",
   "main": "jenny.js",
   "repository": {

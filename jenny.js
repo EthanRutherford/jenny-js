@@ -250,13 +250,13 @@ const observer = new MutationObserver(observerCallback);
 observer.observe(document.body, {childList: true, subtree: true});
 
 function validate(required, constructor, name, prop, propType, typeName = propType.name) {
-	if (prop == null) {
-		if (required) {
-			console.warn(`Missing prop '${name}: ${typeName}' in ${constructor}`);
-		}
-		return;
-	}
 	if (propType.prototype) {
+		if (prop == null) {
+			if (required) {
+				console.warn(`Missing prop '${name}: ${typeName}' in ${constructor}`);
+			}
+			return;
+		}
 		if (!(prop.constructor === propType || prop instanceof propType)) {
 			console.warn(`Failed propType '${name}: ${typeName}' in ${constructor}`);
 		}
