@@ -147,6 +147,14 @@ class Controller {
 	Node.prototype.removeChild = nodeWrapper(Node.prototype.removeChild);
 	Node.prototype.replaceChild = nodeWrapper(Node.prototype.replaceChild);
 	HTMLElement.prototype.__proto__ = JennyElement.prototype;
+	//eslint-disable-next-line accessor-pairs
+	Object.defineProperty(HTMLElement.prototype, "style", {
+		set: function(value) {
+			value instanceof Object ?
+				Object.assign(this.style, value) :
+				this.style.cssText = value;
+		},
+	});
 })();
 
 function jController(tag, children) {
